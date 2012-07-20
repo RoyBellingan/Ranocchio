@@ -1,0 +1,43 @@
+Il nuovo super Proxy massicciamente parallelo ranged request ecc
+
+sono il server S01, e mi arriva una richiesta...
+
+uso il php... e creo SCARICHINO
+
+Controllo in MySQL se ho il file ed è completo:
+
+se il file esiste tutto, uso l'accesso normale e scarichinizza come filepremier & affini
+
+MA 
+Se il file non esiste
+o non è completo
+
+1) disabilito le ranged request, 
+
+2) creo altro processo SEPARATO
+
+    SERVEROTTO (magari è già in esecuzione ed è in attesa...)
+
+E mi baso sul fatto che il 99% delle volte serverotto preleva i dati dal server remoto MOLTO più velocemente di quando possa
+ farlo il cliente e quindi i dati letti da SCARICHINO, ovvio lo limito altrimenti è palese che NON sono un utente normale...
+  diciamo una connessione 30mega effettivi ci può bastare...
+
+Nel caso NON avvenisse oltre ai dati del file in se, SERVEROTTO mi scrive sul memcache a che punto sono arrivato a prelevare
+ dal server remoto. SCARICHINO non andrà oltre quel numero, e se lo raggiunge si mette ad attendere (un paio di secondi sono
+  più che sufficenti prima del controllo successivo...)
+
+Quello che è importante in questa situazione è:
+
+SERVEROTTO deve scrivere in memcached i progressi del download e poi in mysql quando il file è completo, e fregarsene di
+ tutto e tutti, e ovvio anche su disco...
+
+SCARICHINO lui ha un file, e lo legge come ha sempre fatto, solo non va oltre un certo numero.
+
+Ogni X tempo controllo se ci sono file che non si sono riusciti a scaricare... alias Serverotto è bloccato, questa è
+ovviamente una minoranza di file, ma succede se il server remoto ha problemi (può sempre succedere...)
+
+
+# Sviluppi Futuri
+
+Fai un sha1 del file (o meglio alcune parti), per evitare di scaricare file uguali... 
+Questo lo puoi fare anche dopo come controllo schedulato per cancellarli... 
