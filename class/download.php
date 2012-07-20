@@ -197,7 +197,7 @@ class httpdownload {
 
 		//do some clean up
 		@ob_end_clean();
-		$old_status = ignore_user_abort(true);
+		$old_status = ignore_user_abort(false);
 		@set_time_limit(0);
 		$this -> bandwidth = 0;
 

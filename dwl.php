@@ -54,11 +54,11 @@ require_once 'class/record.php';
 $record = new record();
 
 //Passo l'id del record
-$record -> id($record_id);
+$record -> id=$record_id;
 //E dell'utente che lo ha richiesto, cosi se non combacia amen da subito...
-$record -> user($user_id);
+$record -> user=$user_id;
 //E l'immancabile ip, per evitare soliti sharing ecc...
-$record -> ip($_SERVER['REMOTE_ADDR']);
+$record -> ip=$_SERVER['REMOTE_ADDR'];
 
 
 
@@ -78,21 +78,19 @@ if ($record -> red_light) {
 	//Niente di che, registra solo il motivo che può essere record non esiste, utente non può scaricare e cosine simili...
 	//Nessun controllo su account sharing...
 	$log -> event();
+	die();
 }
 
 
-
-
-
+require_once 'class/stream.php';
 if ($record -> complete) {
-
+	
 	//inizia lo streaming leggendo dal disco
 	$stream = new stream();
 	$stream -> type = "disk";
-	$stream -> throttle = 0;
-
 	$stream -> file_info($record -> file_info);
 
+	//se anche per lo stream è tutto ok
 	if ($stream -> green_light) {
 		
 		//registra che inizio un download, con questo ip, info ecc...
@@ -109,17 +107,19 @@ if ($record -> complete) {
 	//Ok valutiamo se il file vada salvato
 	if ($record -> candidate) {
 		//Benissimo
+		
+
 		$serverotto = new serverotto();
+		
 
 		$stream = new stream();
-		$stream -> type("disk");
-		$stream -> throttle(1);
+		$stream -> type="disk";
+		$stream -> complete = false; 
 		$stream -> start();
 
 	} else {
 		$stream = new stream();
-		$stream -> type("network");
-		$stream -> throttle(0);
+		$stream -> type="network";
 		$stream -> start();
 	}
 
