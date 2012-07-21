@@ -1,9 +1,17 @@
 <?php
-/** La classe che si occupa di gestire l'invio dei dati
+/** La classe che si occupa di gestire
+ * l'invio dei dati
+ * &
+ * la lettura da remoto dei dati
+ * &
+ * il salvataggio su disco dei dati
+ * ALIAS
+ * È la classe che si occupa materialmente della gestione dei dati
+ *
  @author Roy Bellingan <admin@seisho.us>
-	 based on the work of Nguyen Quoc Bao <quocbao.coder@gmail.com>
+ based on the work of Nguyen Quoc Bao <quocbao.coder@gmail.com>
  @version 1.0
-TODO
+ TODO
  @desc A simple object for processing download operation , support section downloading
  Please send me an email if you find some bug or it doesn't work with download manager.
  I've tested it with
@@ -17,6 +25,19 @@ TODO
  @example
  */
 class stream {
+	
+	var $id;
+	//!<	L'id del record in questione
+
+	var $file_id;
+	//!<	L'id del file fisico a cui punta il record
+
+	var $user_id;
+	//!<	L'id dell'utente che ha prenotato il file
+
+	var $ip;
+	//!<	L'Ip del computer che si è collegato
+
 	var $light;
 	//!<	Simpatico dai
 
@@ -25,7 +46,7 @@ class stream {
 
 	var $red_light;
 	//!<	Qualche problema
-
+	
 	var $type;
 	//!<	La sorgente è il disco o la rete ?
 
@@ -37,10 +58,9 @@ class stream {
 	//!<	Velocità massima di invio.
 
 	/** Un array di info sul file
-	 *
+	 *ASSOCIATIVOOOOOOO
 	 * file_id,
 	 * complete,
-	 * banned,
 	 * dimension,
 	 * creation,
 	 * dwl_number,
@@ -50,24 +70,33 @@ class stream {
 
 	var $cache_pat;
 	//!<	Dove stanno i file ?
-	
+
 	/** Info che serverotto mi stà passando
-	 * 
+	 *
 	 * È un array cosi formato
-	 * @param start = bool 
-	 * @param end = bool
-	 * l'indirizzo è file_id_info, ed è comune a tutti i processi che attendono serverotto
+	 * @param byte 0  -> start = bool
+	 * @param byte 1 -> end = bool
+	 * e lo usi con un banale stringa[0] e stringa[1], minimo overhead ci vuole...!
+	 * l'indirizzo è file_id_status, ed è comune a tutti i processi che attendono serverotto
 	 */
-	var $mem_info;
-	
+	var $mem_status;
+
 	/** Info su dove si trova l'head del file reportato da serverotto,
-	 * 
+	 *
 	 * È aggiornato ogni 5 megabyte che LUI scarica
 	 * L'indirizzo è file_id_pos, ed è comune a tutti i processi che attendono serverotto
-	 * 
+	 *
 	 */
 	var $mem_pos;
-	
+
+	/** Info sul file
+	 *
+	 * Alias indirizzo remoto
+	 * hosting remoto
+	 * ecc da definire come cosa...
+	 * siccome ci accedo solo una volta è una stdclass per comodità invece che un array...
+	 */
+	var $mem_info;
 
 	function stream() {
 		//Mettiamo qualche valore di default suvvia!
@@ -76,27 +105,62 @@ class stream {
 		$this -> cache_path = "/cache";
 	}
 
+
+/** Cerco un pò di info sul file e sull'utente...
+	 *
+	 */
+	function file_info() {
+		$sql="select file.file_id, complete, dimension, creation, dwl_number, dwl_last from  record, file where record.record_id = $this->id AND record.file_id = file.file_id";
+		$this->res=qr_proper($sql);
+		$this->file_info=$this->res;
+		if(isset($this->res['file_id'])){
+			//se è tutto ok ... non faccio niente!
+			//TODO questa roba dovrebbe essere gestita da remoto... alias per ora scrivo come se non fosse distribuita la cosa...
+			//TODO utente esiste / bannato / scaduto ?
+			//TODO l'utente ha superato il cap ?
+			//TODO registra ip richiesto			
+			
+			
+		}else{
+			$this->set_light(false);
+			$this->error="file non trovato";
+			return false;
+		}
+
+		if($this->res['complete']==true){
+			$this->complete=true;
+		}else{
+			$this->complete=false;
+		}
+		
+		// Per ora salvo tutti e amen...
+		$this->candidate=true;
+		return true;
+
+	}
+
+
 	function start() {
 
 		switch ($this->type) {
 			case 'disk' :
 			//Cerca il file nella cache
-				$filename = "$this->cache_path/$this->file_info[0]";
+				$filename = "$this->cache_path/$this->file_info['file_id]";
 				if (file_exists($filename)) {
 					$size = filesize($filename);
-					if ($size == $this -> file_info[3]) {
+					if ($size == $this -> file_info['dimension']) {
 
 					} else {
 						//Pure questo non va bene che un file scaricato sia di dimensione diversa da quello che risulta salvato...
-						//avvia serverotto e mettici una pezzah 
-						$this -> reason="dimensione del file trovato nella cache diversa";
+						//avvia serverotto e mettici una pezzah
+						$this -> reason = "dimensione del file trovato nella cache diversa";
 						$this -> set_light(false);
 						return false;
 					}
 				} else {
 					//Questo è un errore grave, non dovrebbe MAI accadere una cosa del genere
 					//avvia serverotto e procedi come fosse un file da scaricare...
-					$this -> reason="file non trovato nella cache";
+					$this -> reason = "file non trovato nella cache";
 					$this -> set_light(false);
 					return false;
 				}
@@ -105,12 +169,14 @@ class stream {
 
 				if ($this -> complete === false) {
 					/*Collegati al memcache, e cerca i dati sulla posizione che serverotto ha già iniziato a salvare...
-					*verifica che sia partito ecc
-					 */ 
-					
-				}else{
+					 *verifica che sia partito ecc
+					 */
+
+				} else {
 					//In questo caso spara il file e amen!
-					
+					$read = fread($fp);
+					echo $read;
+
 				}
 
 				//La dimensione trovata è quella sperata
@@ -140,8 +206,37 @@ class stream {
 			$this -> red_light = true;
 		}
 	}
-	
 
+	function memcache_init() {
+
+		//I 3 puntatori del memcache che uso...
+		$this -> mem_info = $this -> file_id . "_info";
+		$this -> mem_status = $this -> file_id . "_status";
+		$this -> mem_pos = $this -> file_id . "_pos";
+
+		$this -> mmc = new memcache();
+		$this -> mmc -> connect('localhost', 11211) or die("Could not connect");
+		//echo "scrivo 10 in $this->mem_status";
+		//$this -> mmc -> set($this -> mem_status, "00");
+
+	}
+
+	/**Legge dal memcached info sul file
+	 */
+	function mmc_get_file_info() {
+		$this->file_info = $this->mmc->get($this -> mem_info);
+	}
+
+	/**Setta nel mmc le info sul file
+	 *
+	 */
+	function mmc_set_file_info() {
+		$this -> mmc -> set($this -> mem_info, $this->file_info);
+	}
+
+	/******************************************/
+	/******************************************/
+	/******************************************/
 
 	var $data = null;
 	var $data_len = 0;
@@ -308,7 +403,8 @@ class stream {
 		$is_resume = true;
 		//Per adesso si
 
-		$delay = 10000; //(10 mS)
+		$delay = 10000;
+		//(10 mS)
 		$speed = $speed * 1024;
 		$chunk = 50;
 
@@ -378,8 +474,8 @@ class stream {
 		$key = $this -> data . "-head";
 		$head = $memcache1 -> get($key);
 
-//echo $head;
-//die("cry");
+		//echo $head;
+		//die("cry");
 		//do some clean up
 		@ob_end_clean();
 		$old_status = ignore_user_abort(true);
@@ -496,6 +592,5 @@ class stream {
 			return true;
 		//you must use a handler
 	}
-	
 
 }

@@ -11,10 +11,12 @@
 
 //Soliti check sugli imput degli utenti...
 
+
+require_once 'class/eventlog.php';
 $log = new eventlog();
 
 if (isset($_GET['record_id']) && isset($_GET['user_id'])) {
-	$record_id = $_GET['file_id'];
+	$record_id = $_GET['record_id'];
 	$user_id = $_GET['user_id'];
 } else {
 
@@ -47,18 +49,18 @@ if (!is_int($record_id) || !is_int($user_id) || $record_id > 10000000000 || $use
 //echo "seem's legit";
 require_once 'util/funkz.php';
 require_once 'util/mysqli.php';
-require_once 'class/record.php';
+require_once 'class/stream.php';
 
 //Inizializziamo il sistema yeah!
 
-$record = new record();
+$stream = new stream();
 
 //Passo l'id del record
-$record -> id=$record_id;
+$stream -> id=$record_id;
 //E dell'utente che lo ha richiesto, cosi se non combacia amen da subito...
-$record -> user=$user_id;
+$stream -> user=$user_id;
 //E l'immancabile ip, per evitare soliti sharing ecc...
-$record -> ip=$_SERVER['REMOTE_ADDR'];
+$stream -> ip=$_SERVER['REMOTE_ADDR'];
 
 
 
@@ -69,12 +71,12 @@ $record -> ip=$_SERVER['REMOTE_ADDR'];
  * se il file è completo e quindi siamo a cavallo,
  * e sennò dal rateo delle richieste di download, se è fattibile salvarlo o continuo a fare da proxy nabbo
  */
-$record -> file_info();
+$stream -> file_info();
 
 
 
 
-if ($record -> red_light) {
+if ($stream -> red_light) {
 	//Niente di che, registra solo il motivo che può essere record non esiste, utente non può scaricare e cosine simili...
 	//Nessun controllo su account sharing...
 	$log -> event();
@@ -83,12 +85,12 @@ if ($record -> red_light) {
 
 
 require_once 'class/stream.php';
-if ($record -> complete) {
+if ($stream -> complete) {
 	
 	//inizia lo streaming leggendo dal disco
-	$stream = new stream();
+	//$stream = new stream();
 	$stream -> type = "disk";
-	$stream -> file_info($record -> file_info);
+	//$stream -> file_info($record -> file_info);
 
 	//se anche per lo stream è tutto ok
 	if ($stream -> green_light) {
@@ -105,14 +107,15 @@ if ($record -> complete) {
 
 } else {
 	//Ok valutiamo se il file vada salvato
-	if ($record -> candidate) {
+	if ($stream -> candidate) {
 		//Benissimo
 		
 
 		$serverotto = new serverotto();
 		
+		
 
-		$stream = new stream();
+
 		$stream -> type="disk";
 		$stream -> complete = false; 
 		$stream -> start();

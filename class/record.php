@@ -26,7 +26,7 @@ class record {
 	//!<	Qualche problema
 	
 	/** Un array di info sul file
-	 * 
+	 * ASSOCIATIVOOOO
 	 * file_id, 
 	 * complete, 
 	 * banned, 
@@ -43,36 +43,7 @@ class record {
 
 	}
 
-	/** Cerco un pò di info sul file e sull'utente...
-	 *
-	 */
-	function file_info() {
-		$sql="select file_id, complete, banned, dimension, creation, dwl_number, dwl_last from  record, file where record.record_id = $this->id AND record.file_id = file.file_id";
-		$this->res=row($sql);
-		$this->file_info=$this->res;
-		if(isset($this->res[0])){
-			//se è tutto ok ... non faccio niente!
-			//TODO questa roba dovrebbe essere gestita da remoto... alias per ora scrivo come se non fosse distribuita la cosa...
-			//TODO utente esiste / bannato / scaduto ?
-			//TODO l'utente ha superato il cap ?
-			//TODO registra ip richiesto			
-			
-			
-		}else{
-			$this->light(false);
-			$this->error("file non trovato");
-			return false;
-		}
-
-		if($this->res[1]==true){
-			$this->complete=true;
-		}else{
-			$this->complete=false;
-		}
-		return true;
-
-	}
-
+	
 	/** Setta la luce!
 	 * @param bool
 	 */
