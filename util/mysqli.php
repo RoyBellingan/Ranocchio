@@ -213,7 +213,7 @@ function qx($sql,$db=false){
  * @param query $sql
 * @param un db fra tanti... $db
 */
-function qrow($sql,$db=false){
+function qrow($sql,$asso=MYSQLI_BOTH,$db=false){
 
 
 	if ($db===false){
@@ -230,7 +230,18 @@ function qrow($sql,$db=false){
 
 		return false;
 	}else{
-		$val=$res->fetch_row();
-		return $val;
+		$val=$res->fetch_all($asso);
+
+			$b=$val[0];
+		return $b;
+
 	}
+}
+
+/**Chiude la connessione
+ * utile per quando uso i forkkkk
+ */
+function qclose(){
+	GLOBAL $db;
+	$db->close();
 }

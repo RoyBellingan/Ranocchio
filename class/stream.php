@@ -25,8 +25,8 @@
  @example
  */
 class stream {
-	
-	var $id;
+
+	var $record_id;
 	//!<	L'id del record in questione
 
 	var $file_id;
@@ -46,7 +46,7 @@ class stream {
 
 	var $red_light;
 	//!<	Qualche problema
-	
+
 	var $type;
 	//!<	La sorgente è il disco o la rete ?
 
@@ -74,8 +74,9 @@ class stream {
 	/** Info che serverotto mi stà passando
 	 *
 	 * È un array cosi formato
-	 * @param byte 0  -> start = bool
-	 * @param byte 1 -> end = bool
+	 * @param byte 0 -> serverotto avviato e cosciente della richiesta
+	 * @param byte 1 -> start = bool
+	 * @param byte 2 -> end = bool
 	 * e lo usi con un banale stringa[0] e stringa[1], minimo overhead ci vuole...!
 	 * l'indirizzo è file_id_status, ed è comune a tutti i processi che attendono serverotto
 	 */
@@ -98,47 +99,73 @@ class stream {
 	 */
 	var $mem_info;
 
+	/**Il pid che si occupa di scaricare questo film
+	 */
+	var $mem_pid;
+
+	/**Spazio libero MINIMO da lasciare sul disco
+	 */
+	var $space_free_min;
+
+	/** Spazio libero rimasto
+	 */
+	var $space_free;
+
 	function stream() {
 		//Mettiamo qualche valore di default suvvia!
 
 		$this -> complete = true;
-		$this -> cache_path = "/cache";
+		$this -> cache_path = "/wd/5/cache/";
 	}
 
-
-/** Cerco un pò di info sul file e sull'utente...
+	/** Cerco un pò di info sul file e sull'utente...
 	 *
 	 */
 	function file_info() {
-		$sql="select file.file_id, complete, dimension, creation, dwl_number, dwl_last from  record, file where record.record_id = $this->id AND record.file_id = file.file_id";
-		$this->res=qr_proper($sql);
-		$this->file_info=$this->res;
-		if(isset($this->res['file_id'])){
+		$sql = "select file.file_id, complete, dimension, creation, dwl_number, dwl_last, user_id, hosting_id, path, banned from  record, file,remote where record.record_id = $this->record_id AND record.file_id = file.file_id AND file.file_id = remote.file_id";
+		exo($sql);
+		$this -> res = qrow($sql);
+		printa($this -> res);
+		$this -> file_info = $this -> res;
+		$this -> file_id = $this -> res['file_id'];
+		if (isset($this -> res['file_id'])) {
 			//se è tutto ok ... non faccio niente!
 			//TODO questa roba dovrebbe essere gestita da remoto... alias per ora scrivo come se non fosse distribuita la cosa...
 			//TODO utente esiste / bannato / scaduto ?
 			//TODO l'utente ha superato il cap ?
-			//TODO registra ip richiesto			
-			
-			
-		}else{
-			$this->set_light(false);
-			$this->error="file non trovato";
+			//TODO registra ip richiesto
+			exo("trovato qualcosa, controllo utente");
+			if ($this -> res['user_id'] == $this -> user_id) {
+				exo("utente ok, via libera alla fase 1");
+			} else {
+
+				exo("utente errato nel db -> {$this->res['user_id']} nella richiesta $this->user_id");
+				$this -> reason = "utente errato nel db -> {$this->res['user_id']} nella richiesta $this->user_id";
+				$this -> set_light(false);
+				return false;
+			}
+
+		} else {
+			$this -> set_light(false);
+			$this -> error = "file non trovato";
 			return false;
 		}
 
-		if($this->res['complete']==true){
-			$this->complete=true;
-		}else{
-			$this->complete=false;
+		if ($this -> res['complete'] === true) {
+			exo("file completo");
+			$this -> complete = true;
+		} else {
+			exo("file incompleto");
+			$this -> complete = false;
 		}
-		
+
 		// Per ora salvo tutti e amen...
-		$this->candidate=true;
+		//TODO controlla se hai spazio e cosine varie, se un file è candidabile per davvero bla bla bla bla
+		//fai una apposita funzione, RICORDA serverotto poi cancella se finice lo spazio, se a lui dici salva salva e basta...
+		$this -> candidate = true;
 		return true;
 
 	}
-
 
 	function start() {
 
@@ -210,10 +237,12 @@ class stream {
 	function memcache_init() {
 
 		//I 3 puntatori del memcache che uso...
+
 		$this -> mem_info = $this -> file_id . "_info";
 		$this -> mem_status = $this -> file_id . "_status";
 		$this -> mem_pos = $this -> file_id . "_pos";
-
+		$this -> mem_pid = $this -> file_id . "_pid";
+		exo("Mem usa $this->mem_info + $this->mem_status $this->mem_pos");
 		$this -> mmc = new memcache();
 		$this -> mmc -> connect('localhost', 11211) or die("Could not connect");
 		//echo "scrivo 10 in $this->mem_status";
@@ -224,14 +253,155 @@ class stream {
 	/**Legge dal memcached info sul file
 	 */
 	function mmc_get_file_info() {
-		$this->file_info = $this->mmc->get($this -> mem_info);
+		$this -> file_info = $this -> mmc -> get($this -> mem_info);
 	}
 
 	/**Setta nel mmc le info sul file
 	 *
 	 */
 	function mmc_set_file_info() {
-		$this -> mmc -> set($this -> mem_info, $this->file_info);
+		$this -> mmc -> set($this -> mem_info, $this -> file_info);
+	}
+
+	/**Legge dal memcached info sul file
+	 */
+	function mmc_get_file_status() {
+		$this -> file_status = $this -> mmc -> get($this -> mem_status);
+		if ($this -> file_status === false) {
+			$this -> file_status = "000";
+		}
+	}
+
+	/**Setta nel mmc le info sul file
+	 *
+	 */
+	function mmc_set_file_status() {
+		$this -> mmc -> set($this -> mem_status, $this -> file_status);
+	}
+
+	function mmc_get_file_pos() {
+		$this -> file_pos = $this -> mmc -> get($this -> mem_pos);
+		if ($this -> file_pos === false) {
+			$this -> file_pos = "0";
+		}
+		return $this -> file_pos;
+	}
+
+	/**Setta nel mmcil pid che si occupa del file
+	 *
+	 */
+	function mmc_set_pid() {
+		$this -> mmc -> set($this -> mem_pid, $this -> posixProcessID);
+	}
+
+	function mmc_get_pid() {
+
+		$this -> file_pid = $this -> mmc -> get($this -> mem_pid);
+
+		return $this -> file_pid;
+	}
+
+	/******************************************/
+	/************S*E*R*V*E*R*O*T*T*O*!*********/
+	/******************************************/
+
+	function new_serverotto() {
+
+		$this -> space_free_min = 1073741824;
+		//un giga minimo
+
+		exo("serverotto start!");
+		//Carichiamo le info sugli hosting...
+		require_once 'hosting/hosting_id.php';
+		//Mi serve da sapere per adesso il percorso remoto
+		//printa($hosting_id);
+		$this -> remote_address = "http://" . $hosting_id[$this -> file_info['hosting_id']] . "/" . $this -> file_info['path'];
+		exo($this -> remote_address);
+
+		/*****/
+		//Chiudo le cose che verrebbero sharate
+		/*****/
+
+		//MySQL
+		qclose();
+		//Memcache
+		$this -> mmc -> close();
+
+		$pid = pcntl_fork();
+		//$pid=0;
+		//E le riapro
+		$this -> memcache_init();
+
+		if ($pid == -1) {
+			exo("could not fork");
+			$this -> reason = "could not fork";
+			return false;
+
+		} else if ($pid) {
+			//Papà
+			$posixProcessID = posix_getpid();
+			exo("fork fatto! pid $pid, io sono $posixProcessID");
+
+			return true;
+
+		} else {
+			//Figghio
+			//ok cosa devo dare io esattamente ???
+
+			//1 Faccio sapere al mondo che esisto
+			$this -> posixProcessID = posix_getpid();
+			$this -> mmc_set_pid();
+
+			//2 dico al memcache che esisto e sono cosciente
+			$this -> file_status = "100";
+			$this -> mmc_set_file_status();
+
+			//3 il file che è da salvare fai spazio se serve
+			//alias spazio disponibile
+			//spazio minimo da lasciare
+
+			$df = disk_free_space($this -> cache_path);
+
+			logg("Spazio libero $df, richiesto {$this->file_info['dimension']}, minimo $this->space_free_min");
+
+			if (($df - $this -> file_info['dimension']) < $this -> space_free_min) {
+				//se è inferiore sql select file_id order by dwl_last DESC
+			}
+
+			//4 inizia a salvare e dillo al memcache...
+			logg("inizio a salvare");
+			logg("apro $this->remote_address");
+			$rfp = fopen($this -> remote_address, "r");
+			logg("stream aperto $this->remote_address @");
+			printa($rfp);
+			
+			$file_path=$this -> cache_path . $this -> file_id;
+			
+			$lfp = fopen($file_path, "w");
+			logg("stream aperto $file_path");
+			$pos = 0;
+			while ($buf = fread($rfp, 8)) {
+				//logg("letto $buf");
+				//echo $buf;
+				fwrite($lfp, $buf);
+				$pos += strlen($buf);
+				//Non chiamo la funzione che spreca tempoh!
+				$this -> mmc -> set($this -> mem_pos, $pos);
+			}
+
+			fclose($rfp);
+			fclose($lfp);
+
+			//Create a new file with the process id in it.
+			//$filePointer = fopen("/var/run/srv_" . $this -> file_id . ".pid", "w");
+			//fwrite($filePointer, $posixProcessID);
+			//top
+			//fclose($filePointer);
+			sleep(5);
+			exit ;
+
+		}
+
 	}
 
 	/******************************************/

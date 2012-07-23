@@ -43,3 +43,20 @@ sdb               0.00    38.32  0.00 288.42     0.00  2623.55     9.10    32.97
 function select_disk(){
 	
 }
+
+
+function exo($txt){
+	if(VERBOSE==true){
+		echo "$txt <br>\n";
+	}
+}
+
+function printa($txt){
+	echo "<pre>";
+	print_r($txt);
+	echo "</pre>";
+}
+
+function logg($cosa){
+	error_log($cosa."\n",3,"/srv/www/htdocs/mokba/forked.log");
+}

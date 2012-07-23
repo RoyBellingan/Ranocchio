@@ -11,10 +11,13 @@
 
 //Soliti check sugli imput degli utenti...
 
-
+define("VERBOSE", true);
+require_once 'util/funkz.php';
 require_once 'class/eventlog.php';
+
 $log = new eventlog();
 
+exo("controllo gli imput");
 if (isset($_GET['record_id']) && isset($_GET['user_id'])) {
 	$record_id = $_GET['record_id'];
 	$user_id = $_GET['user_id'];
@@ -47,7 +50,7 @@ if (!is_int($record_id) || !is_int($user_id) || $record_id > 10000000000 || $use
 }
 
 //echo "seem's legit";
-require_once 'util/funkz.php';
+exo("Imput ok, $record_id e $user_id");
 require_once 'util/mysqli.php';
 require_once 'class/stream.php';
 
@@ -56,15 +59,13 @@ require_once 'class/stream.php';
 $stream = new stream();
 
 //Passo l'id del record
-$stream -> id=$record_id;
+$stream -> record_id = $record_id;
 //E dell'utente che lo ha richiesto, cosi se non combacia amen da subito...
-$stream -> user=$user_id;
+$stream -> user_id = $user_id;
 //E l'immancabile ip, per evitare soliti sharing ecc...
-$stream -> ip=$_SERVER['REMOTE_ADDR'];
+$stream -> ip = $_SERVER['REMOTE_ADDR'];
 
-
-
-
+exo("Controllo se il record esiste");
 /*A questo punto controlla, se
  * Il file effettivamente esiste
  * La richiesta è leggittima, alias questo utente può scaricare il file...
@@ -73,20 +74,18 @@ $stream -> ip=$_SERVER['REMOTE_ADDR'];
  */
 $stream -> file_info();
 
-
-
-
 if ($stream -> red_light) {
+	exo("Il record non esiste o l'utente non lo può scaricare");
 	//Niente di che, registra solo il motivo che può essere record non esiste, utente non può scaricare e cosine simili...
 	//Nessun controllo su account sharing...
 	$log -> event();
 	die();
 }
 
+exo("Ok fase iniziale completata");
 
-require_once 'class/stream.php';
 if ($stream -> complete) {
-	
+
 	//inizia lo streaming leggendo dal disco
 	//$stream = new stream();
 	$stream -> type = "disk";
@@ -94,35 +93,52 @@ if ($stream -> complete) {
 
 	//se anche per lo stream è tutto ok
 	if ($stream -> green_light) {
-		
+
 		//registra che inizio un download, con questo ip, info ecc...
-		$log->event();
+		$log -> event();
 		$stream -> start();
 		die();
-	}else{
+	} else {
 		//Motivi del fail
-		$log->event();
+		$log -> event();
 		die();
 	}
 
 } else {
 	//Ok valutiamo se il file vada salvato
+	exo("Il file non è presente / è incompleto");
 	if ($stream -> candidate) {
 		//Benissimo
-		
+		exo("È candidato ad essere salvato, vediamo se serverotto già sta scaricandolo o sono il primo");
 
-		$serverotto = new serverotto();
-		
-		
+		$stream -> type = "disk";
+	
+		$stream -> memcache_init();
+		$stream -> mmc_get_file_status();
+		exo("file status è $stream->file_status");
+		if ($stream -> file_status[0] == 0) {
+			exo("Serverotto è ignaro di tutto ciò..");
 
+			$stream -> new_serverotto();
+			
+		} else {
+			exo("Serverotto è a conoscenza, quindi mi metto in coda e pesco quel che si trova...");
+			$stream->mmc_get_pid();
+			exo("Il serverotto che gestisce la cosa è al $stream->file_pid");
+			if ($stream -> file_status[1] == 1) {
+				$stream -> mmc_get_file_pos();
+				exo("Ha iniziato a scaricare ed è alla posizione $stream->file_pos");
+			} else {
+				exo("NON ha ancora iniziato a scaricare");
+			}
 
-		$stream -> type="disk";
-		$stream -> complete = false; 
+		}
+
 		$stream -> start();
 
 	} else {
 		$stream = new stream();
-		$stream -> type="network";
+		$stream -> type = "network";
 		$stream -> start();
 	}
 
