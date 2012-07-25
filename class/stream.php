@@ -52,12 +52,14 @@ class stream {
 
 	var $complete;
 	//!<	Se il file è completo, se è da disco e questo è falso in auto cerca il memcached con il valore da non superare, disattiva le ranged request ecc
+
 	var $throttle;
 	//!<	Se la velocità deve essere limitata, <b>Attenzione!!!</b>, se il file è letto dalla rete e non è pronto, il sistema comunque limita la velocità...
+
 	var $throttle_speed;
 	//!<	Velocità massima di invio.
 
-	/** Un array di info sul file
+	/** Un array di info sul file che viene dalla query a mysql...
 	 *ASSOCIATIVOOOOOOO
 	 * file_id,
 	 * complete,
@@ -65,8 +67,15 @@ class stream {
 	 * creation,
 	 * dwl_number,
 	 * dwl_last
+	 file.file_id, complete, dimension, creation, dwl_number, dwl_last, user_id, hosting_id, path, banned, record_name, mime
 	 */
 	var $file_info;
+
+	var $file_path;
+	//!<	Dove stà il file ?
+
+	var $file_dimension;
+	//!<	Dimensione del file
 
 	var $cache_pat;
 	//!<	Dove stanno i file ?
@@ -122,12 +131,22 @@ class stream {
 	 *
 	 */
 	function file_info() {
-		$sql = "select file.file_id, complete, dimension, creation, dwl_number, dwl_last, user_id, hosting_id, path, banned from  record, file,remote where record.record_id = $this->record_id AND record.file_id = file.file_id AND file.file_id = remote.file_id";
+
+		$sql = "select file.file_id, complete, dimension, creation, dwl_number, dwl_last, user_id, hosting_id, path, banned, remote_name, mime from  record, file,remote where record.record_id = $this->record_id AND record.file_id = file.file_id AND file.file_id = remote.file_id";
 		exo($sql);
 		$this -> res = qrow($sql);
 		printa($this -> res);
 		$this -> file_info = $this -> res;
 		$this -> file_id = $this -> res['file_id'];
+		$this -> file_path = $this -> cache_path . $this -> file_id;
+		$this -> mime = $this -> res['mime'];
+
+		// Per ora salvo tutti e amen...
+		//TODO controlla se hai spazio e cosine varie, se un file è candidabile per davvero bla bla bla bla
+		//fai una apposita funzione, RICORDA serverotto poi cancella se finice lo spazio, se a lui dici salva salva e basta...
+		$this -> candidate = true;
+		$this->file_name = $this -> res['remote_name'];
+
 		if (isset($this -> res['file_id'])) {
 			//se è tutto ok ... non faccio niente!
 			//TODO questa roba dovrebbe essere gestita da remoto... alias per ora scrivo come se non fosse distribuita la cosa...
@@ -151,71 +170,41 @@ class stream {
 			return false;
 		}
 
-		if ($this -> res['complete'] === true) {
+		if ($this -> res['complete'] == "true") {
 			exo("file completo");
-			$this -> complete = true;
+
+			if (file_exists($this -> file_path)) {
+				exo("il file $this->file_path effettivamente esiste nella cache");
+
+				$this -> file_dimension = filesize($this -> file_path);
+				if ($this -> file_dimension == $this -> file_info['dimension']) {
+					exo("il file effettivamente ha le stesse dimensioni");
+					$this -> complete = true;
+					$this -> set_light(true);
+				} else {
+					//Pure questo non va bene che un file scaricato sia di dimensione diversa da quello che risulta salvato...
+					//avvia serverotto e mettici una pezzah
+
+					$this -> reason = "dimensione del file trovato nella cache diversa doveva essere {$this->file_info['dimension']} invece è $this->file_dimension";
+					exo($this -> reason);
+					$this -> set_light(false);
+					return false;
+				}
+			} else {
+				//Questo è un errore grave, non dovrebbe MAI accadere una cosa del genere
+				//avvia serverotto e procedi come fosse un file da scaricare...
+				$this -> reason = "iol file $this->file_path non trovato nella cache";
+				exo($this -> reason);
+				$this -> set_light(false);
+				return false;
+			}
+
 		} else {
 			exo("file incompleto");
 			$this -> complete = false;
 		}
 
-		// Per ora salvo tutti e amen...
-		//TODO controlla se hai spazio e cosine varie, se un file è candidabile per davvero bla bla bla bla
-		//fai una apposita funzione, RICORDA serverotto poi cancella se finice lo spazio, se a lui dici salva salva e basta...
-		$this -> candidate = true;
 		return true;
-
-	}
-
-	function start() {
-
-		switch ($this->type) {
-			case 'disk' :
-			//Cerca il file nella cache
-				$filename = "$this->cache_path/$this->file_info['file_id]";
-				if (file_exists($filename)) {
-					$size = filesize($filename);
-					if ($size == $this -> file_info['dimension']) {
-
-					} else {
-						//Pure questo non va bene che un file scaricato sia di dimensione diversa da quello che risulta salvato...
-						//avvia serverotto e mettici una pezzah
-						$this -> reason = "dimensione del file trovato nella cache diversa";
-						$this -> set_light(false);
-						return false;
-					}
-				} else {
-					//Questo è un errore grave, non dovrebbe MAI accadere una cosa del genere
-					//avvia serverotto e procedi come fosse un file da scaricare...
-					$this -> reason = "file non trovato nella cache";
-					$this -> set_light(false);
-					return false;
-				}
-
-				$fp = fopen($filename, "r");
-
-				if ($this -> complete === false) {
-					/*Collegati al memcache, e cerca i dati sulla posizione che serverotto ha già iniziato a salvare...
-					 *verifica che sia partito ecc
-					 */
-
-				} else {
-					//In questo caso spara il file e amen!
-					$read = fread($fp);
-					echo $read;
-
-				}
-
-				//La dimensione trovata è quella sperata
-				//TODO
-
-				break;
-
-			case 'network' :
-				break;
-			default :
-				break;
-		}
 
 	}
 
@@ -234,6 +223,8 @@ class stream {
 		}
 	}
 
+	/** Controllo se è tutto ok per iniziare lo stream dal disco
+	 */
 	function memcache_init() {
 
 		//I 3 puntatori del memcache che uso...
@@ -327,9 +318,10 @@ class stream {
 		//Memcache
 		$this -> mmc -> close();
 
-		$pid = pcntl_fork();
-		//$pid=0;
+		//$pid = pcntl_fork();
+		$pid = 0;
 		//E le riapro
+		new_mysqli();
 		$this -> memcache_init();
 
 		if ($pid == -1) {
@@ -374,12 +366,13 @@ class stream {
 			$rfp = fopen($this -> remote_address, "r");
 			logg("stream aperto $this->remote_address @");
 			printa($rfp);
-			
-			$file_path=$this -> cache_path . $this -> file_id;
-			
+
+			$file_path = $this -> cache_path . $this -> file_id;
+
 			$lfp = fopen($file_path, "w");
 			logg("stream aperto $file_path");
 			$pos = 0;
+			$ite = 0;
 			while ($buf = fread($rfp, 8)) {
 				//logg("letto $buf");
 				//echo $buf;
@@ -387,7 +380,14 @@ class stream {
 				$pos += strlen($buf);
 				//Non chiamo la funzione che spreca tempoh!
 				$this -> mmc -> set($this -> mem_pos, $pos);
+				$ite++;
 			}
+			exo("iterazioni $ite");
+			//diciamo a mysql che il file ora è completo, e non ricevo più richeste per questa cosa...
+			//L'ordine con cui notifico che non esisto più non deve essere cambiato!!
+
+			$sql = "UPDATE `mokba`.`file` SET `complete` = 'true' WHERE `file`.`file_id` =$this->file_id;";
+			qq($sql);
 
 			fclose($rfp);
 			fclose($lfp);
@@ -421,20 +421,7 @@ class stream {
 	var $use_resume = true;
 	var $use_autoexit = false;
 
-	/*!
-	 * A list of events:
-	 *	- mouse events
-	 *		-# mouse move event
-	 *		-# mouse click event\n
-	 *			More info about the click event.
-	 *		-# mouse double click event
-	 *	- keyboard events
-	 *		-# key down event
-	 *		-# key up event
-	 * More text here.
-	 */
 	var $use_auth = false;
-	var $filename = null;
 	var $mime = null;
 	var $bufsize = 2048;
 	var $seek_start = 0;
@@ -522,7 +509,7 @@ class stream {
 	 **/
 	function header($size, $seek_start = null, $seek_end = null) {
 		header('Content-type: ' . $this -> mime);
-		header('Content-Disposition: attachment; filename="' . $this -> filename . '"');
+		header('Content-Disposition: attachment; filename="' . $this -> file_name . '"');
 		header('Last-Modified: ' . date('D, d M Y H:i:s \G\M\T', $this -> data_mod));
 
 		if ($this -> data_section && $this -> use_resume) {
@@ -555,68 +542,100 @@ class stream {
 	 * @return bool
 	 **/
 	function download() {
-		if (!$this -> initialize())
+		if (!$this -> initialize()) {
 			return false;
+		}
 
+		///*** Mistero 1 *****///
 		$seek = $this -> seek_start;
+
 		$speed = 1024;
+
 		//$bufsize = $this->bufsize;
+
 		$bufsize = 1024 * $speed;
+
 		$packet = 1;
+		/////////////////////
 
 		//do some clean up
+
+		//Consente di avere sessioni parallele
+		session_write_close();
+
+		//Flush eventuale dei dati CANCELLATO che corrompe
 		@ob_end_clean();
+
+		//Se l'utente chiude mica mando i dati a casaccio...
 		$old_status = ignore_user_abort(false);
+
+		//Ed ha tutto il tempo che gli aggrada...
 		@set_time_limit(0);
+
+		//Alcuni config
+
+		//Banda usata ora è zero
 		$this -> bandwidth = 0;
 
-		$is_resume = true;
-		//Per adesso si
+		$is_resume = $stream -> use_resume;
 
 		$delay = 10000;
 		//(10 mS)
 		$speed = $speed * 1024;
+
 		$chunk = 50;
 
-		session_write_close();
-		//NON LO SI TOCCA PER NESSUN MOTIVO
+		$size = $this -> file_dimension;
 
-		$size = filesize($this -> data);
-		$this -> size = $size;
-
-		if ($seek > ($size - 1))
+		//Se la richiesta è fuori dal range la resetto a zero
+		//TODO in teoria dovrei notificare la cosa ?? indaga...
+		if ($seek > ($size - 1)) {
 			$seek = 0;
-		if ($this -> filename == null)
-			$this -> filename = basename($this -> data);
+		}
 
-		$res = fopen($this -> data, 'rb');
-		if ($seek)
+
+		$res = fopen($this -> file_path, 'rb');
+		if ($seek){
 			fseek($res, $seek);
-		if ($this -> seek_end < $seek)
+		}
+		//Se il range si estende oltre la fine lo cappo alla dimensione del file
+		if ($this -> seek_end < $seek){
 			$this -> seek_end = $size - 1;
-
-		$this -> header($size, $seek, $this -> seek_end);
+		}
+		
+		//Primo header
+		//$this -> header($size, $seek, $this -> seek_end);
 		//always use the last seek
-		$size = $this -> seek_end - $seek + 1;
-
-		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $size > 0) {
-			if ($size < $bufsize) {
-				echo fread($res, $size);
-				$this -> bandwidth += $size;
-			} else {
+		exo("sono qua 34");
+		//Dimensione dei dati che devo inviare
+		$job_size = $this -> seek_end - $seek + 1;
+		exo("Devo inviare $job_size byte");
+		printa($this);
+		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $job_size > 0) {
+			//Se ho un frammeto di dati piccolo lo invio e basta
+			if ($job_size < $bufsize) {
+				echo fread($res, $job_size);
+				$this -> bandwidth += $job_size;
+				$job_size=0;
+				
+			} else {//Altrimenti bufferizzo e invio
 				echo fread($res, $bufsize);
 				$this -> bandwidth += $bufsize;
+				$job_size -= $bufsize;
 			}
-
-			$size -= $bufsize;
+			
 			flush();
-
+			//A cosa serve non lo ho capito bene... per ora lo sopprimo sto pezzo
+			/*
 			if ($speed > 0 && ($this -> bandwidth > $speed * $packet * 1024)) {
 				//sleep(1);
 				$packet++;
 			}
+			 */
+			
 			usleep($delay);
 		}
+		
 		fclose($res);
 
 		if ($this -> use_autoexit)
@@ -634,15 +653,14 @@ class stream {
 	 * Start download limited by memcached values
 	 * @return bool
 	 **/
-	function download_rate() {
+	function download_mmc() {
 		if (!$this -> initialize()) {
 			return false;
 		}
 
-		$memcache1 = new Memcache;
-		$memcache1 -> connect('localhost', 11211);
-		$key = $this -> data . "-head";
-		$head = $memcache1 -> get($key);
+		
+		$this->mmc_get_file_pos();
+		
 
 		//echo $head;
 		//die("cry");

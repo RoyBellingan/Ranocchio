@@ -88,21 +88,18 @@ if ($stream -> complete) {
 
 	//inizia lo streaming leggendo dal disco
 	//$stream = new stream();
-	$stream -> type = "disk";
-	//$stream -> file_info($record -> file_info);
+	exo("inizio a leggere un file su disco ed ad inviarlo all'utente");
 
-	//se anche per lo stream è tutto ok
-	if ($stream -> green_light) {
 
-		//registra che inizio un download, con questo ip, info ecc...
-		$log -> event();
-		$stream -> start();
-		die();
-	} else {
-		//Motivi del fail
-		$log -> event();
-		die();
-	}
+	//registra che inizio un download, con questo ip, info ecc...
+	$log -> event();
+
+	$stream -> use_resume = true;
+	$stream -> download();
+
+	//TODO Poi mettici mysql update un download in più,
+	//TODO se ti va metti anche  un download per l'utente, banda usata dall'utente e le stats che ti aggradano
+	die();
 
 } else {
 	//Ok valutiamo se il file vada salvato
@@ -112,7 +109,7 @@ if ($stream -> complete) {
 		exo("È candidato ad essere salvato, vediamo se serverotto già sta scaricandolo o sono il primo");
 
 		$stream -> type = "disk";
-	
+
 		$stream -> memcache_init();
 		$stream -> mmc_get_file_status();
 		exo("file status è $stream->file_status");
@@ -120,10 +117,10 @@ if ($stream -> complete) {
 			exo("Serverotto è ignaro di tutto ciò..");
 
 			$stream -> new_serverotto();
-			
+
 		} else {
 			exo("Serverotto è a conoscenza, quindi mi metto in coda e pesco quel che si trova...");
-			$stream->mmc_get_pid();
+			$stream -> mmc_get_pid();
 			exo("Il serverotto che gestisce la cosa è al $stream->file_pid");
 			if ($stream -> file_status[1] == 1) {
 				$stream -> mmc_get_file_pos();

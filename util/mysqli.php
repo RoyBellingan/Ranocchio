@@ -8,7 +8,9 @@ $db = new mysqli($db_host, $db_user, $db_password, $db_name);
 /** Usata di solito per le stored procedure, che ne posso avere solo una alla volta attiva
  */  
 function new_mysqli(){
-	return new mysqli($db_host, $db_user, $db_password, $db_name);
+	GLOBAL $db,$db_host,$db_user,$db_password,$db_name;
+	$db= new mysqli($db_host, $db_user, $db_password, $db_name);
+	return $db;
 }
 
 
