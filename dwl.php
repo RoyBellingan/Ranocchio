@@ -10,7 +10,7 @@
  */
 
 //Soliti check sugli imput degli utenti...
-
+ob_start();
 define("VERBOSE", true);
 require_once 'util/funkz.php';
 require_once 'class/eventlog.php';
@@ -95,6 +95,7 @@ if ($stream -> complete) {
 	$log -> event();
 
 	$stream -> use_resume = true;
+	
 	$stream -> download();
 
 	//TODO Poi mettici mysql update un download in più,

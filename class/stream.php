@@ -1,4 +1,26 @@
 <?php
+/*TODO
+ * 
+ *-------- Togli OGNI out a schermo e mandali su un file di testo / db
+ * Rendi operativo il limitare di velocità anche per i download lato utente
+ * Fai il download con mmc_cap e testalo usando down them all e amici vari... 
+ * 
+ * Inizia ad usare i test, in teoria puoi benissimo forkare un processo che fa la prima richiesta, e forkare anche gli altri...
+ * 
+ * 
+ * 
+ * 
+ * 
+ * 
+ * 
+ * 
+ */
+
+ 
+ 
+ 
+ 
+  
 /** La classe che si occupa di gestire
  * l'invio dei dati
  * &
@@ -140,6 +162,8 @@ class stream {
 		$this -> file_id = $this -> res['file_id'];
 		$this -> file_path = $this -> cache_path . $this -> file_id;
 		$this -> mime = $this -> res['mime'];
+		$this->file_name=$this->res['remote_name'];
+		
 
 		// Per ora salvo tutti e amen...
 		//TODO controlla se hai spazio e cosine varie, se un file è candidabile per davvero bla bla bla bla
@@ -508,10 +532,11 @@ class stream {
 	 * Send download information header
 	 **/
 	function header($size, $seek_start = null, $seek_end = null) {
+		exo("il mime è: $this->mime");
 		header('Content-type: ' . $this -> mime);
 		header('Content-Disposition: attachment; filename="' . $this -> file_name . '"');
 		header('Last-Modified: ' . date('D, d M Y H:i:s \G\M\T', $this -> data_mod));
-
+//die();
 		if ($this -> data_section && $this -> use_resume) {
 			header("HTTP/1.0 206 Partial Content");
 			header("Status: 206 Partial Content");
@@ -564,7 +589,7 @@ class stream {
 		session_write_close();
 
 		//Flush eventuale dei dati CANCELLATO che corrompe
-		@ob_end_clean();
+		@ob_clean();
 
 		//Se l'utente chiude mica mando i dati a casaccio...
 		$old_status = ignore_user_abort(false);
@@ -577,7 +602,7 @@ class stream {
 		//Banda usata ora è zero
 		$this -> bandwidth = 0;
 
-		$is_resume = $stream -> use_resume;
+		$is_resume = $this -> use_resume;
 
 		$delay = 10000;
 		//(10 mS)
@@ -604,24 +629,28 @@ class stream {
 		}
 		
 		//Primo header
-		//$this -> header($size, $seek, $this -> seek_end);
+		$this -> header($size, $seek, $this -> seek_end);
+		
+		ob_end_flush();
 		//always use the last seek
 		exo("sono qua 34");
 		//Dimensione dei dati che devo inviare
 		$job_size = $this -> seek_end - $seek + 1;
 		exo("Devo inviare $job_size byte");
-		printa($this);
+		//printa($this);
 		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $job_size > 0) {
 			//Se ho un frammeto di dati piccolo lo invio e basta
 			if ($job_size < $bufsize) {
 				echo fread($res, $job_size);
 				$this -> bandwidth += $job_size;
 				$job_size=0;
+				usleep(500);
 				
 			} else {//Altrimenti bufferizzo e invio
 				echo fread($res, $bufsize);
 				$this -> bandwidth += $bufsize;
 				$job_size -= $bufsize;
+				usleep(10000);
 			}
 			
 			flush();
@@ -635,6 +664,7 @@ class stream {
 			
 			usleep($delay);
 		}
+		ob_end_clean();
 		
 		fclose($res);
 
@@ -680,7 +710,7 @@ class stream {
 		$res = fopen($this -> data, 'rb');
 
 		//Proviamo a NON inviare l'header per niente...
-		//$this->header($size,$seek,$this->seek_end); //always use the last seek
+		$this->header($size,$seek,$this->seek_end); //always use the last seek
 
 		//$rimasto è la dimensione RESIDUA del buffer (head la posizione)
 		$rimasto = $head;
@@ -715,6 +745,9 @@ class stream {
 				//per evitare lavoro inutile ecc considero che inviare i file a 100megabit sia notevole come velocità ?
 				//quindi ogni 0.5mega inviati posso riposare per un bel 5 millisecondi ...
 				usleep(5000);
+				//Peccato che cosi attufo la cache di invio dei dati, che magari vengono scartati e cose simpatiche simili...
+				//La velocità di invio deve essere proporzionata a quella di ricezione, o no ?
+				//TODO scopri cosa sia vero e cosa no... e fai un post sul blog... per ora lascia che si ferma per X tempo
 
 			}
 

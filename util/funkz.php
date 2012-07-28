@@ -47,16 +47,17 @@ function select_disk(){
 
 function exo($txt){
 	if(VERBOSE==true){
-		echo "$txt <br>\n";
+		//echo "$txt <br>\n";
+		logg($txt);
 	}
 }
 
 function printa($txt){
-	echo "<pre>";
-	print_r($txt);
-	echo "</pre>";
+	//echo "<pre>";
+	logg(print_r($txt,true));
+	//echo "</pre>";
 }
 
-function logg($cosa){
-	error_log($cosa."\n",3,"/srv/www/htdocs/mokba/forked.log");
+function logg($cosa,$file="/srv/www/htdocs/mokba/log_comune.log"){
+	error_log($cosa."\n",3,$file);
 }
