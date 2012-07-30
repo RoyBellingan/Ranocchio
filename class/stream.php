@@ -10,6 +10,10 @@
  * 
  * 
  * 
+ *Cap sul numero di download in simultanea
+ * 
+ * 
+ * 
  * 
  * 
  * 
@@ -111,7 +115,7 @@ class stream {
 	 * e lo usi con un banale stringa[0] e stringa[1], minimo overhead ci vuole...!
 	 * l'indirizzo è file_id_status, ed è comune a tutti i processi che attendono serverotto
 	 * 
-	 * Questo è su SHMOP
+	 * Questo è su MEMCACHED
 	 */
 	var $mem_status;
 
@@ -120,6 +124,9 @@ class stream {
 	 * È aggiornato ogni 5 megabyte che LUI scarica
 	 * L'indirizzo è file_id_pos, ed è comune a tutti i processi che attendono serverotto
 	 *
+	 * Se leggo che la dimensione segnata è uguale a quella del file, controllo per scrupolo in mem_status...
+	 * 
+	 *Si trova a  1'000'000 + file_id*4 + 0 
 	 */
 	var $mem_pos;
 
@@ -159,7 +166,7 @@ class stream {
 	 */
 	function file_info() {
 
-		$sql = "select file.file_id, complete, dimension, creation, dwl_number, dwl_last, user_id, hosting_id, path, banned, remote_name, mime from  record, file,remote where record.record_id = $this->record_id AND record.file_id = file.file_id AND file.file_id = remote.file_id";
+		$sql = "select file.file_id, complete, dimension, UNIX_TIMESTAMP(creation) as creation_ts, dwl_number, dwl_last, user_id, hosting_id, path, banned, remote_name, mime from  record, file,remote where record.record_id = $this->record_id AND record.file_id = file.file_id AND file.file_id = remote.file_id";
 		exo($sql);
 		$this -> res = qrow($sql);
 		printa($this -> res);
@@ -167,6 +174,7 @@ class stream {
 		$this -> file_id = $this -> res['file_id'];
 		$this -> file_path = $this -> cache_path . $this -> file_id;
 		$this -> mime = $this -> res['mime'];
+		$this->data_mod=$this->res['creation_ts'];
 		$this->file_name=$this->res['remote_name'];
 		
 
@@ -257,14 +265,20 @@ class stream {
 	function memcache_init() {
 
 		//I 3 puntatori del memcache che uso...
+		require_once 'class/sqlmem.php';
 
 		$this -> mem_info = $this -> file_id . "_info";
 		$this -> mem_status = $this -> file_id . "_status";
-		$this -> mem_pos = $this -> file_id . "_pos";
+		
+		//1'000'000 + file_id*4 + 0 
+		$this -> mem_pos = 1000000 + $this -> file_id * 4;
 		$this -> mem_pid = $this -> file_id . "_pid";
+		
 		exo("Mem usa $this->mem_info + $this->mem_status $this->mem_pos");
 		$this -> mmc = new memcache();
 		$this -> mmc -> connect('localhost', 11211) or die("Could not connect");
+		
+		$this->sqlmem_pos=new sqlmem($this -> mem_pos,16,true);
 		//echo "scrivo 10 in $this->mem_status";
 		//$this -> mmc -> set($this -> mem_status, "00");
 
@@ -298,13 +312,26 @@ class stream {
 	function mmc_set_file_status() {
 		$this -> mmc -> set($this -> mem_status, $this -> file_status);
 	}
-
+	
+	/** Prende la posizione del file, siccome viene usata spesso vorrei evitare di fare la chiamata ad una sotto funzione, che mette solo overhead...
+	 * 
+	 */
+	 
 	function mmc_get_file_pos() {
-		$this -> file_pos = $this -> mmc -> get($this -> mem_pos);
+		$this->sqlmem_pos->select();
+		
 		if ($this -> file_pos === false) {
 			$this -> file_pos = "0";
 		}
 		return $this -> file_pos;
+	}
+	
+	/**Non esiste usa direttamente
+	 * $this->sqlmem_pos->update();
+	 * 
+	 */
+	function mmc_set_file_pos(){
+		return $this->sqlmem_pos->update();
 	}
 
 	/**Setta nel mmcil pid che si occupa del file

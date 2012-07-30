@@ -1,24 +1,22 @@
 <?php
 //$sucesss = @apache_setenv('no-gzip', 1);
 //TODO via shmop fai un altro script che regola la velocità... mi da info ecc...
+require_once '../util/funkz.php';
+require_once '../class/stream.php';
 
-@ini_set('zlib.output_compression', 0);
-@ini_set('implicit_flush', 1);
-@ini_set('output_buffering',0);
 ob_start();
-$size=filesize("2");
-/*
-header('Content-type: ' . "application/octet-stream");
-header('Content-Disposition: attachment; filename=[Anime ITA] Neon Genesis Evangelion 2003 - Renewal - 01 - L\'attacco dell\'Angelo.avi');
-header('Last-Modified: Sat, 28 Jul 2012 18:22:56 GMT');
+$file="1.txt";
 
-header("Content-Length: $size");
-		*/	
+$stream=new stream();
+$stream->file_path=$file;
+$stream->file_dimension=filesize($file);
+$stream->mime="text/plain";
+$stream->file_name="Try";
+$this -> data_mod=time();
 
+$stream->download();
 
-$res = fopen("2", 'rb');
-
-
+die();
 $job_size = $size;
 $bufsize=10;
 echo ("file da $size byte");
@@ -33,7 +31,7 @@ while ( $job_size > 0) {
     } else {//Altrimenti bufferizzo e invio
 	echo fread($res, $bufsize); 
 	$job_size -= $bufsize;
-	usleep(200);
+	usleep(200000);
 	}
 
     

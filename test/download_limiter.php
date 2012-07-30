@@ -54,11 +54,24 @@ $html=<<<EOD
 <input type="number" min="0" value="" name="speed"> MByte/s
 	
 
+
 <br><br>
+Tempo di download
+
+Parti in download
+
+Velocità massima
+
+Velocità minima
+
+Velocità media
+
+
+<hr>
 Per evitare troppe richieste e cose varie, viene RILETTA la velocità ogni 10 millisecondi circa sul downloader di prova
 (per quello in produzione invece è circa ogni 5 secondi)...
 
-Ne consegue che anche il buffer cambia dimensione ecc ecc... 
+<br>Ne consegue che anche il buffer cambia dimensione ecc ecc, ma questo non importa molto... 
 </form>
 </body>
 </html>
