@@ -1,43 +1,70 @@
 <?php
-//$sucesss = @apache_setenv('no-gzip', 1);
-//TODO via mmc fai un altro script che regola la velocità... mi da info ecc...
-@ini_set('zlib.output_compression', 0);
-@ini_set('implicit_flush', 1);
-@ini_set('output_buffering',0);
-ob_start();
-$size=filesize("2");
+//Mi serve questo per configurare la velocità di download di download_limited.php
+
 /*
-header('Content-type: ' . "application/octet-stream");
-header('Content-Disposition: attachment; filename=[Anime ITA] Neon Genesis Evangelion 2003 - Renewal - 01 - L\'attacco dell\'Angelo.avi');
-header('Last-Modified: Sat, 28 Jul 2012 18:22:56 GMT');
+ * TODO impostare degli intoppi, dei rallentamenti artificiosi e cose simili...
+ * Per ora imposto una velocità e quella mantengo...
+ * TODO sarebbe bello potere vedere delle info dettagliate
+ * Aggiornate ogni X secondi, ma che mi dicono ad esempio
+ * TODO Data inizio
+ * Velocità Media
+ * Velocità Max
+ * Velocità Min
+ * Ip destinazione
+ * Punti di passaggio (array di ip)
+ * Ping ai vari hop (array di latenze)
+ * 
+ * Questo per pubblicare una mappa di latenze e velocità, se uno scarica lento gli dico di chi è la colpa...
+ * 
+ */
 
-header("Content-Length: $size");
-		*/	
 
-
-$res = fopen("2", 'rb');
-
-
-$job_size = $size;
-$bufsize=10;
-echo ("file da $size byte");
-//printa($this);
-while ( $job_size > 0) {
-    //Se ho un frammeto di dati piccolo lo invio e basta
-    if ($job_size < $bufsize) {
-	echo fread($res, $job_size);
-	$job_size=0;
-	usleep(500);
+if(isset($_GET['speed']) && $_GET['speed']>0){
 	
-    } else {//Altrimenti bufferizzo e invio
-	echo fread($res, $bufsize); 
-	$job_size -= $bufsize;
-	usleep(200);
+	$speed=$_GET['speed'];
+		
+	if(isset($_GET['c'])){
+		$bit=$_GET['c'];
+		//echo $bit;
+		if($bit=="on"){
+			$bit=true;
+			$speed=floor(1024*1024*$speed/8);
+		}
+	}else{
+			$speed=1024*1024*$speed;
 	}
+	
+	require_once '../class/sqlmem.php';
+	$sm=new sqlmem(5001,16,true);
+	echo " era ".$sm->select()." byte al secondo"; 
+	//echo "$speed bytes al secondo";
+	$speed=(int)$speed;
+	$sm->update($speed);
 
-    
-    ob_flush();
-    
+	
 }
 
+$html=<<<EOD
+<!DOCTYPE html>
+<html>
+<body>
+<form action="download_limiter.php" method="get">
+<input type="submit" value="setta"> <br>
+<input type="checkbox" name="c"> Bit invece di byte ? <br>
+<input type="number" min="0" value="" name="speed"> MByte/s
+	
+
+<br><br>
+Per evitare troppe richieste e cose varie, viene RILETTA la velocità ogni 10 millisecondi circa sul downloader di prova
+(per quello in produzione invece è circa ogni 5 secondi)...
+
+Ne consegue che anche il buffer cambia dimensione ecc ecc... 
+</form>
+</body>
+</html>
+
+
+EOD;
+
+echo $html;
 

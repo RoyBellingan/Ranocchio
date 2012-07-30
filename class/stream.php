@@ -110,6 +110,8 @@ class stream {
 	 * @param byte 2 -> end = bool
 	 * e lo usi con un banale stringa[0] e stringa[1], minimo overhead ci vuole...!
 	 * l'indirizzo è file_id_status, ed è comune a tutti i processi che attendono serverotto
+	 * 
+	 * Questo è su SHMOP
 	 */
 	var $mem_status;
 
@@ -127,10 +129,13 @@ class stream {
 	 * hosting remoto
 	 * ecc da definire come cosa...
 	 * siccome ci accedo solo una volta è una stdclass per comodità invece che un array...
+	 * 
+	 * Questo è su MEMCACHED
 	 */
 	var $mem_info;
 
 	/**Il pid che si occupa di scaricare questo film
+	 * Non sò a cosa serve, metto su MEMCACHED
 	 */
 	var $mem_pid;
 
