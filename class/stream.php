@@ -1,30 +1,25 @@
 <?php
 /*TODO
- * 
- *-------- Togli OGNI out a schermo e mandali su un file di testo / db
+ *
+
  * Rendi operativo il limitare di velocità anche per i download lato utente
- * Fai il download con mmc_cap e testalo usando down them all e amici vari... 
- * 
+ * Fai il download con mmc_cap e testalo usando down them all e amici vari...
+ *
  * Inizia ad usare i test, in teoria puoi benissimo forkare un processo che fa la prima richiesta, e forkare anche gli altri...
- * 
- * 
- * 
- * 
+ *
+ *
+ *
+ *
  *Cap sul numero di download in simultanea
- * 
- * 
- * 
- * 
- * 
- * 
- * 
+ *
+ *
+ *
+ *
+ *
+ *
+ *
  */
 
- 
- 
- 
- 
-  
 /** La classe che si occupa di gestire
  * l'invio dei dati
  * &
@@ -79,8 +74,12 @@ class stream {
 	var $complete;
 	//!<	Se il file è completo, se è da disco e questo è falso in auto cerca il memcached con il valore da non superare, disattiva le ranged request ecc
 
+	/** Se la velocità deve essere limitata, <b>Attenzione!!!</b>, se il file è letto dalla rete e non è pronto, il sistema comunque limita la velocità...
+	 * @param 0 unlimited
+	 * @param 1 segue mem_pos
+	 * @param 2 dinamicoe segue mem_speed
+	 */
 	var $throttle;
-	//!<	Se la velocità deve essere limitata, <b>Attenzione!!!</b>, se il file è letto dalla rete e non è pronto, il sistema comunque limita la velocità...
 
 	var $throttle_speed;
 	//!<	Velocità massima di invio.
@@ -114,7 +113,7 @@ class stream {
 	 * @param byte 2 -> end = bool
 	 * e lo usi con un banale stringa[0] e stringa[1], minimo overhead ci vuole...!
 	 * l'indirizzo è file_id_status, ed è comune a tutti i processi che attendono serverotto
-	 * 
+	 *
 	 * Questo è su MEMCACHED
 	 */
 	var $mem_status;
@@ -125,8 +124,8 @@ class stream {
 	 * L'indirizzo è file_id_pos, ed è comune a tutti i processi che attendono serverotto
 	 *
 	 * Se leggo che la dimensione segnata è uguale a quella del file, controllo per scrupolo in mem_status...
-	 * 
-	 *Si trova a  1'000'000 + file_id*4 + 0 
+	 *
+	 *Si trova a  1'000'000 + file_id*4 + 0
 	 */
 	var $mem_pos;
 
@@ -136,7 +135,7 @@ class stream {
 	 * hosting remoto
 	 * ecc da definire come cosa...
 	 * siccome ci accedo solo una volta è una stdclass per comodità invece che un array...
-	 * 
+	 *
 	 * Questo è su MEMCACHED
 	 */
 	var $mem_info;
@@ -159,6 +158,79 @@ class stream {
 
 		$this -> complete = true;
 		$this -> cache_path = "/wd/5/cache/";
+
+		//Velocità di base, da intendersi come MegaByte al secondo
+		//Configurata alla creazione della classe, e può essere tranquillamente cambiata
+		$this -> speed = 10 * 1024 * 1024 * 1024;
+
+		//Il buffer è quanti dati leggo alla volta, quando leggo da disco 1Megabyte alla volta va benissimo...
+		$this -> bufsize = 1024 * 1024 * 1024;
+
+	}
+
+	/** Config Varie, se devi confi qualcosa a mano fallo adesso...
+	 */
+	function pre_download() {
+		if (!$this -> initialize()) {
+			return false;
+			//TODO logga qualcosa plz...
+			exo("fail all'inizializzazione del download");
+			die();
+		}
+		exo("ok all'inizializzazione del download");
+		//Consente di avere sessioni parallele
+		session_write_close();
+
+		//Flush eventuale dei dati CANCELLALO che corrompe
+		@ob_clean();
+
+		//Se l'utente chiude mica mando i dati a casaccio...
+		@ignore_user_abort(false);
+
+		//Ed ha tutto il tempo che gli aggrada...
+		@set_time_limit(0);
+
+		//Calcolo il delay tra un frame e l'altro
+		$this -> delay = $this->delay_count();
+
+		$this -> bandwidth = 0;
+
+		//Apro il file che si trova NEL server
+		$this -> res = fopen($this -> file_path, 'rb');
+
+		//INizio a leggere NON dall'inizio ?
+		if ($this -> seek) {
+			//Se la richiesta è fuori dal range la resetto a zero
+			//TODO in teoria dovrei notificare la cosa ?? indaga...
+			if ($this -> seek > ($this -> file_dimension - 1)) {
+				$this -> seek = 0;
+			}
+			fseek($this -> res, $this -> seek);
+		}
+
+		//Se il range si estende oltre la fine lo cappo alla dimensione del file
+		if ($this -> seek_end < $this -> seek) {
+			$this -> seek_end = $this -> size - 1;
+		}
+
+		//Mettiamo gli HEADER
+		$this -> header($this -> size, $this -> seek, $this -> seek_end);
+
+		//Termino il buffering, altrimenti vado in overflow di memoria occupata, e invio il contenuto, altrimenti perdo gli header
+		ob_end_flush();
+
+		//Dimensione dei dati che devo inviare
+		$this -> job_size = $this -> seek_end - $seek + 1;
+		exo("Devo inviare $this->job_size byte");
+
+	}
+
+	/** Calcola il delay
+	 * Alias io leggo un buffer, e lo invio, quanto devo fermarmi prima di spedire il successivo ?
+	 * @return microsecondi di attesa
+	 */
+	function delay_count() {
+		$this -> delay = $this -> bufsize / $this -> speed * 1000000;
 	}
 
 	/** Cerco un pò di info sul file e sull'utente...
@@ -174,15 +246,14 @@ class stream {
 		$this -> file_id = $this -> res['file_id'];
 		$this -> file_path = $this -> cache_path . $this -> file_id;
 		$this -> mime = $this -> res['mime'];
-		$this->data_mod=$this->res['creation_ts'];
-		$this->file_name=$this->res['remote_name'];
-		
+		$this -> data_mod = $this -> res['creation_ts'];
+		$this -> file_name = $this -> res['remote_name'];
 
 		// Per ora salvo tutti e amen...
 		//TODO controlla se hai spazio e cosine varie, se un file è candidabile per davvero bla bla bla bla
 		//fai una apposita funzione, RICORDA serverotto poi cancella se finice lo spazio, se a lui dici salva salva e basta...
 		$this -> candidate = true;
-		$this->file_name = $this -> res['remote_name'];
+		$this -> file_name = $this -> res['remote_name'];
 
 		if (isset($this -> res['file_id'])) {
 			//se è tutto ok ... non faccio niente!
@@ -269,19 +340,34 @@ class stream {
 
 		$this -> mem_info = $this -> file_id . "_info";
 		$this -> mem_status = $this -> file_id . "_status";
-		
-		//1'000'000 + file_id*4 + 0 
+
+		//1'000'000 + file_id*4 + 0
 		$this -> mem_pos = 1000000 + $this -> file_id * 4;
 		$this -> mem_pid = $this -> file_id . "_pid";
-		
+
 		exo("Mem usa $this->mem_info + $this->mem_status $this->mem_pos");
 		$this -> mmc = new memcache();
 		$this -> mmc -> connect('localhost', 11211) or die("Could not connect");
-		
-		$this->sqlmem_pos=new sqlmem($this -> mem_pos,16,true);
+
+		$this -> sqlmem_pos = new sqlmem($this -> mem_pos, 16, true);
 		//echo "scrivo 10 in $this->mem_status";
 		//$this -> mmc -> set($this -> mem_status, "00");
 
+	}
+
+	/**Inizia il throttle basata su shmop
+	 */
+	function mmc_init_speed() {
+		//La locazione deve già esistere
+		//TODO test e controlli se non esiste
+		$this -> sqlmem_speed = new sqlmem($this -> mem_speed_pos, 16, false);
+
+	}
+
+	/** Chiama diretto $this -> sqlmem_speed -> select();
+	 */
+	function mmc_get_speed() {
+		$this -> sqlmem_speed -> select();
 	}
 
 	/**Legge dal memcached info sul file
@@ -312,26 +398,26 @@ class stream {
 	function mmc_set_file_status() {
 		$this -> mmc -> set($this -> mem_status, $this -> file_status);
 	}
-	
+
 	/** Prende la posizione del file, siccome viene usata spesso vorrei evitare di fare la chiamata ad una sotto funzione, che mette solo overhead...
-	 * 
+	 *
 	 */
-	 
+
 	function mmc_get_file_pos() {
-		$this->sqlmem_pos->select();
-		
+		$this -> sqlmem_pos -> select();
+
 		if ($this -> file_pos === false) {
 			$this -> file_pos = "0";
 		}
 		return $this -> file_pos;
 	}
-	
+
 	/**Non esiste usa direttamente
 	 * $this->sqlmem_pos->update();
-	 * 
+	 *
 	 */
-	function mmc_set_file_pos(){
-		return $this->sqlmem_pos->update();
+	function mmc_set_file_pos() {
+		return $this -> sqlmem_pos -> update();
 	}
 
 	/**Setta nel mmcil pid che si occupa del file
@@ -568,7 +654,7 @@ class stream {
 		header('Content-type: ' . $this -> mime);
 		header('Content-Disposition: attachment; filename="' . $this -> file_name . '"');
 		header('Last-Modified: ' . date('D, d M Y H:i:s \G\M\T', $this -> data_mod));
-//die();
+		//die();
 		if ($this -> data_section && $this -> use_resume) {
 			header("HTTP/1.0 206 Partial Content");
 			header("Status: 206 Partial Content");
@@ -580,6 +666,8 @@ class stream {
 		}
 	}
 
+	/** Non sò a cosa serva sinceramente...
+	 */
 	function download_ex($size) {
 		if (!$this -> initialize())
 			return false;
@@ -594,166 +682,55 @@ class stream {
 		return true;
 	}
 
-	/**
+	/** Download convenzionale, senza limitazione di velocità
 	 * Start download
 	 * @return bool
 	 **/
 	function download() {
-		if (!$this -> initialize()) {
-			return false;
-		}
 
-		///*** Mistero 1 *****///
-		$seek = $this -> seek_start;
+		$this -> pre_download();
 
-		$speed = 1024;
-
-		//$bufsize = $this->bufsize;
-
-		$bufsize = 1024 * $speed;
-
-		$packet = 1;
-		/////////////////////
-
-		//do some clean up
-
-		//Consente di avere sessioni parallele
-		session_write_close();
-
-		//Flush eventuale dei dati CANCELLATO che corrompe
-		@ob_clean();
-
-		//Se l'utente chiude mica mando i dati a casaccio...
-		$old_status = ignore_user_abort(false);
-
-		//Ed ha tutto il tempo che gli aggrada...
-		@set_time_limit(0);
-
-		//Alcuni config
-
-		//Banda usata ora è zero
-		$this -> bandwidth = 0;
-
-		$is_resume = $this -> use_resume;
-
-		$delay = 10000;
-		//(10 mS)
-		$speed = $speed * 1024;
-
-		$chunk = 50;
-
-		$size = $this -> file_dimension;
-
-		//Se la richiesta è fuori dal range la resetto a zero
-		//TODO in teoria dovrei notificare la cosa ?? indaga...
-		if ($seek > ($size - 1)) {
-			$seek = 0;
-		}
-
-
-		$res = fopen($this -> file_path, 'rb');
-		if ($seek){
-			fseek($res, $seek);
-		}
-		//Se il range si estende oltre la fine lo cappo alla dimensione del file
-		if ($this -> seek_end < $seek){
-			$this -> seek_end = $size - 1;
-		}
-		
-		//Primo header
-		$this -> header($size, $seek, $this -> seek_end);
-		
-		ob_end_flush();
-		//always use the last seek
-		exo("sono qua 34");
-		//Dimensione dei dati che devo inviare
-		$job_size = $this -> seek_end - $seek + 1;
-		exo("Devo inviare $job_size byte");
 		//printa($this);
 		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $job_size > 0) {
 			//Se ho un frammeto di dati piccolo lo invio e basta
-			if ($job_size < $bufsize) {
-				echo fread($res, $job_size);
-				$this -> bandwidth += $job_size;
-				$job_size=0;
-				usleep(500);
-				
+			if ($this -> job_size < $this -> bufsize) {
+				echo fread($this -> res, $this -> job_size);
+				$this -> bandwidth += $this -> job_size;
+				$this -> job_size = 0;
+
 			} else {//Altrimenti bufferizzo e invio
-				echo fread($res, $bufsize);
-				$this -> bandwidth += $bufsize;
-				$job_size -= $bufsize;
-				usleep(10000);
+				echo fread($this -> res, $this -> bufsize);
+				$this -> bandwidth += $this -> bufsize;
+				$this -> job_size -= $this -> bufsize;
+				usleep($this -> delay);
 			}
-			
+
 			flush();
 			//A cosa serve non lo ho capito bene... per ora lo sopprimo sto pezzo
 			/*
-			if ($speed > 0 && ($this -> bandwidth > $speed * $packet * 1024)) {
-				//sleep(1);
-				$packet++;
-			}
+			 if ($speed > 0 && ($this -> bandwidth > $speed * $packet * 1024)) {
+			 //sleep(1);
+			 $packet++;
+			 }
 			 */
-			
-			usleep($delay);
+
 		}
-		ob_end_clean();
-		
+
 		fclose($res);
 
-		if ($this -> use_autoexit)
-			exit();
-
-		//restore old status
-		ignore_user_abort($old_status);
-		set_time_limit(ini_get("max_execution_time"));
-
 		return $size;
-		//return true;
+
 	}
 
-	/**
-	 * Start download limited by memcached values
+	/**Start download limited by file position
+	 * Alias un download di un file NON ancora finito, che si stà finendo di scaricare
+	 *
+	 * Non è altro che un wrapper a download_adv ma con max velocità...
 	 * @return bool
 	 **/
-	function download_mmc() {
-		if (!$this -> initialize()) {
-			return false;
-		}
+	function download_pos() {
 
-		
-		$this->mmc_get_file_pos();
-		
-
-		//echo $head;
-		//die("cry");
-		//do some clean up
-		@ob_end_clean();
-		$old_status = ignore_user_abort(true);
-		@set_time_limit(0);
-		$this -> bandwidth = 0;
-
-		$is_resume = false;
-		//No... mi complica la vita tantissimo...
-
-		//L'utente può avere sessioni parallele dello stesso file ? In teoria non è così cretino...
-		//nella pratica sarebbe opportuno evitarlo..
-		session_write_close();
-
-		$res = fopen($this -> data, 'rb');
-
-		//Proviamo a NON inviare l'header per niente...
-		$this->header($size,$seek,$this->seek_end); //always use the last seek
-
-		//$rimasto è la dimensione RESIDUA del buffer (head la posizione)
-		$rimasto = $head;
-
-		$inviato = 0;
-
-		$chunk = 8192;
-		$buffer_min = $chunk * 64;
-		//alias mezzo megabyte alias 524.288 byte
-		$buffer_read = $buffer_min;
-		//su questo valore è da fare un pò di prove... ora metto che è uguale a buffer min (il valore massimo...)
+		$this -> pre_download();
 
 		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $rimasto > 0) {
 
@@ -795,6 +772,31 @@ class stream {
 
 		return $inviato;
 		//return true;
+	}
+
+	/**Un download in cui la velocità viene limitata
+	 * Utile per gli utenti scarichissimi...
+	 *
+	 * Non è altro che un wrapper a download_adv ma con controllo posizione disattivo..
+	 */
+	function download_throttle() {
+
+	}
+
+	/**Un download in cui la velocità è limitata e il file da inviare non è completo
+	 *
+	 *
+	 *
+	 */
+
+	function download_adv() {
+
+	}
+
+	/** un botto di info inutili in scritte
+	 */
+	function download_debug() {
+
 	}
 
 	function set_byfile($dir) {

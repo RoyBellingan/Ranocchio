@@ -12,11 +12,32 @@ $stream->file_path=$file;
 $stream->file_dimension=filesize($file);
 $stream->mime="text/plain";
 $stream->file_name="Try";
-$this -> data_mod=time();
+$stream->data_mod=time();
 
-$stream->download();
+$stream->throttle=2;
+$stream->mem_speed_pos=5001;
+
+$stream->download_throttle();
 
 die();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 $job_size = $size;
 $bufsize=10;
 echo ("file da $size byte");
