@@ -3,6 +3,7 @@
 //TODO via shmop fai un altro script che regola la velocità... mi da info ecc...
 require_once '../util/funkz.php';
 require_once '../class/stream.php';
+require_once '../class/sqlmem.php';
 
 ob_start();
 $file="1.txt";
@@ -16,6 +17,9 @@ $stream->data_mod=time();
 
 $stream->throttle=2;
 $stream->mem_speed_pos=5001;
+$stream->mmc_init_speed();
+$val=$stream->sqlmem_speed->select();
+exo ("il file lo spariamo a $val");
 
 $stream->download_throttle();
 

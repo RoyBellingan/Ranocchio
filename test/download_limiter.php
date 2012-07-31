@@ -36,18 +36,21 @@ if(isset($_GET['speed']) && $_GET['speed']>0){
 	
 	require_once '../class/sqlmem.php';
 	$sm=new sqlmem(5001,16,true);
-	echo " era ".$sm->select()." byte al secondo"; 
+	
 	//echo "$speed bytes al secondo";
 	$speed=(int)$speed;
 	$sm->update($speed);
 
 	
+}	
+if (@!isset($sm)){
+$sm=new sqlmem(5001,16,true);
 }
-
 $html=<<<EOD
 <!DOCTYPE html>
 <html>
 <body>
+<h2> È {$sm->select()} byte al secondo</h2>
 <form action="download_limiter.php" method="get">
 <input type="submit" value="setta"> <br>
 <input type="checkbox" name="c"> Bit invece di byte ? <br>

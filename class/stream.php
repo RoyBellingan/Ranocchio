@@ -171,12 +171,48 @@ class stream {
 	/** Config Varie, se devi confi qualcosa a mano fallo adesso...
 	 */
 	function pre_download() {
-		if (!$this -> initialize()) {
-			return false;
-			//TODO logga qualcosa plz...
-			exo("fail all'inizializzazione del download");
-			die();
+		global $HTTP_SERVER_VARS;
+
+		//default mime
+		if ($this -> mime == null)
+			$this -> mime = "application/octet-stream";
+
+		if (isset($_SERVER['HTTP_RANGE']) || isset($HTTP_SERVER_VARS['HTTP_RANGE'])) {
+
+			if (isset($HTTP_SERVER_VARS['HTTP_RANGE']))
+				$this -> seek_range = substr($HTTP_SERVER_VARS['HTTP_RANGE'], strlen('bytes='));
+			else
+				$this -> seek_range = substr($_SERVER['HTTP_RANGE'], strlen('bytes='));
+
+			$range = explode('-', $this -> seek_range);
+
+			if ($range[0] > 0) {
+				$this -> seek_start = intval($range[0]);
+			}
+
+			if ($range[1] > 0)
+				$this -> seek_end = intval($range[1]);
+			else
+				$this -> seek_end = -1;
+
+			if (!$this -> use_resume) {
+				$this -> seek_start = 0;
+
+				//header("HTTP/1.0 404 Bad Request");
+				//header("Status: 400 Bad Request");
+
+				//exit;
+
+				//return false;
+			} else {
+				$this -> data_section = 1;
+			}
+
+		} else {
+			$this -> seek_start = 0;
+			$this -> seek_end = -1;
 		}
+
 		exo("ok all'inizializzazione del download");
 		//Consente di avere sessioni parallele
 		session_write_close();
@@ -191,7 +227,7 @@ class stream {
 		@set_time_limit(0);
 
 		//Calcolo il delay tra un frame e l'altro
-		$this -> delay = $this->delay_count();
+		$this -> delay = $this -> delay_count();
 
 		$this -> bandwidth = 0;
 
@@ -199,28 +235,35 @@ class stream {
 		$this -> res = fopen($this -> file_path, 'rb');
 
 		//INizio a leggere NON dall'inizio ?
-		if ($this -> seek) {
+		if ($this -> seek_start) {
 			//Se la richiesta è fuori dal range la resetto a zero
 			//TODO in teoria dovrei notificare la cosa ?? indaga...
-			if ($this -> seek > ($this -> file_dimension - 1)) {
-				$this -> seek = 0;
+			if ($this -> seek_start > ($this -> file_dimension - 1)) {
+				$this -> seek_start = 0;
 			}
-			fseek($this -> res, $this -> seek);
+			fseek($this -> res, $this -> seek_start);
 		}
 
 		//Se il range si estende oltre la fine lo cappo alla dimensione del file
-		if ($this -> seek_end < $this -> seek) {
-			$this -> seek_end = $this -> size - 1;
+		if ($this -> seek_end < $this -> seek_start) {
+			$this -> seek_end = $this -> file_dimension - 1;
+		}
+
+		//Se invece la fine è prima dell'inizio, o è scemo chi lo chiede, o non è stato richeisto...!
+		if ($this -> seek_end < $this -> seek_start) {
+			$this -> seek_end = $this -> file_dimension - 1;
 		}
 
 		//Mettiamo gli HEADER
-		$this -> header($this -> size, $this -> seek, $this -> seek_end);
+		$this -> header($this -> file_dimension, $this -> seek_start, $this -> seek_end);
 
 		//Termino il buffering, altrimenti vado in overflow di memoria occupata, e invio il contenuto, altrimenti perdo gli header
 		ob_end_flush();
 
 		//Dimensione dei dati che devo inviare
-		$this -> job_size = $this -> seek_end - $seek + 1;
+
+		$this -> job_size = $this -> seek_end - $this -> seek_start + 1;
+
 		exo("Devo inviare $this->job_size byte");
 
 	}
@@ -358,9 +401,10 @@ class stream {
 	/**Inizia il throttle basata su shmop
 	 */
 	function mmc_init_speed() {
+
 		//La locazione deve già esistere
 		//TODO test e controlli se non esiste
-		$this -> sqlmem_speed = new sqlmem($this -> mem_speed_pos, 16, false);
+		$this -> sqlmem_speed = new sqlmem($this -> mem_speed_pos, 16, true);
 
 	}
 
@@ -581,71 +625,6 @@ class stream {
 	 */
 	var $speed = 0;
 
-	/*-------------------
-	 | Download Function |
-	 -------------------*/
-	/**
-	 * Check authentication and get seek position
-	 * @return bool
-	 **/
-	function initialize() {
-		global $HTTP_SERVER_VARS;
-
-		if ($this -> use_auth)//use authentication
-		{
-			if (!$this -> _auth())//no authentication
-			{
-				header('WWW-Authenticate: Basic realm="Please enter your username and password"');
-				header('HTTP/1.0 401 Unauthorized');
-				header('status: 401 Unauthorized');
-				if ($this -> use_autoexit)
-					exit();
-				return false;
-			}
-		}
-		if ($this -> mime == null)
-			$this -> mime = "application/octet-stream";
-		//default mime
-
-		if (isset($_SERVER['HTTP_RANGE']) || isset($HTTP_SERVER_VARS['HTTP_RANGE'])) {
-
-			if (isset($HTTP_SERVER_VARS['HTTP_RANGE']))
-				$seek_range = substr($HTTP_SERVER_VARS['HTTP_RANGE'], strlen('bytes='));
-			else
-				$seek_range = substr($_SERVER['HTTP_RANGE'], strlen('bytes='));
-
-			$range = explode('-', $seek_range);
-
-			if ($range[0] > 0) {
-				$this -> seek_start = intval($range[0]);
-			}
-
-			if ($range[1] > 0)
-				$this -> seek_end = intval($range[1]);
-			else
-				$this -> seek_end = -1;
-
-			if (!$this -> use_resume) {
-				$this -> seek_start = 0;
-
-				//header("HTTP/1.0 404 Bad Request");
-				//header("Status: 400 Bad Request");
-
-				//exit;
-
-				//return false;
-			} else {
-				$this -> data_section = 1;
-			}
-
-		} else {
-			$this -> seek_start = 0;
-			$this -> seek_end = -1;
-		}
-
-		return true;
-	}
-
 	/**
 	 * Send download information header
 	 **/
@@ -659,7 +638,7 @@ class stream {
 			header("HTTP/1.0 206 Partial Content");
 			header("Status: 206 Partial Content");
 			header('Accept-Ranges: bytes');
-			header("Content-Range: bytes $seek_start-$seek_end/$size");
+			header("Content-Range: bytes $seek_start-$seek_end");
 			header("Content-Length: " . ($seek_end - $seek_start + 1));
 		} else {
 			header("Content-Length: $size");
@@ -691,7 +670,7 @@ class stream {
 		$this -> pre_download();
 
 		//printa($this);
-		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $job_size > 0) {
+		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $this->job_size > 0) {
 			//Se ho un frammeto di dati piccolo lo invio e basta
 			if ($this -> job_size < $this -> bufsize) {
 				echo fread($this -> res, $this -> job_size);
@@ -715,9 +694,9 @@ class stream {
 			 */
 
 		}
-
-		fclose($res);
-
+		die();
+		fclose($this->res);
+		
 		return $size;
 
 	}
@@ -780,7 +759,8 @@ class stream {
 	 * Non è altro che un wrapper a download_adv ma con controllo posizione disattivo..
 	 */
 	function download_throttle() {
-
+		$this -> pre_download();
+		exo("inizio un download a velocità controllata");
 	}
 
 	/**Un download in cui la velocità è limitata e il file da inviare non è completo

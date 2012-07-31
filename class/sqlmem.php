@@ -50,7 +50,7 @@ class sqlmem {
 		} else {
 			$this -> id = shmop_open($a, "c", 0777, $b);
 		}
-		if ($this->id===false){
+		if ($this -> id === false) {
 			die("controlla lo shmop per favore, era $a, $b, $c");
 		}
 		return $this -> id;
@@ -67,7 +67,12 @@ class sqlmem {
 			$this -> val = unserialize($raw);
 
 		} else {
-			$this -> val = $raw;
+			$i = strpos($raw, "\0");
+			if ($i === false) {
+				$this -> val = $raw;
+			}
+			$this -> val = substr($raw, 0, $i);
+
 		}
 
 		return $this -> val;
@@ -98,7 +103,7 @@ class sqlmem {
 		if ($this -> raw === false) {
 			$raw = serialize($this -> val);
 		} else {
-			$raw = $this -> val;
+			$raw = "$this->val\0";
 		}
 
 		shmop_write($this -> id, $raw, 0);
