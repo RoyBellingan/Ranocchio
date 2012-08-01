@@ -1,12 +1,16 @@
 <?php
 //$sucesss = @apache_setenv('no-gzip', 1);
 //TODO via shmop fai un altro script che regola la velocità... mi da info ecc...
+
+define("VERBOSE", true);
+
+
 require_once '../util/funkz.php';
 require_once '../class/stream.php';
 require_once '../class/sqlmem.php';
 
 ob_start();
-$file="1.txt";
+$file="2";
 
 $stream=new stream();
 $stream->file_path=$file;
@@ -21,6 +25,7 @@ $stream->mmc_init_speed();
 $val=$stream->sqlmem_speed->select();
 exo ("il file lo spariamo a $val");
 
+$stream->speed=$val;
 $stream->download_throttle();
 
 die();

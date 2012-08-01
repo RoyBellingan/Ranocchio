@@ -161,12 +161,30 @@ class stream {
 
 		//Velocità di base, da intendersi come MegaByte al secondo
 		//Configurata alla creazione della classe, e può essere tranquillamente cambiata
-		$this -> speed = 10 * 1024 * 1024 * 1024;
+		$this -> speed = 10 * 1024 * 1024;
 
 		//Il buffer è quanti dati leggo alla volta, quando leggo da disco 1Megabyte alla volta va benissimo...
-		$this -> bufsize = 1024 * 1024 * 1024;
+		$this -> bufsize =  1024 * 1024;
 
 	}
+
+	/**Regola la velocità di download
+	 * @param megabyte/sec
+	 * @return bool
+	 */
+	function speed_mb($val) {
+		$this -> speed = $val *  1024 * 1024;
+	}
+	
+		/**Regola la velocità di download
+	 * @param megabyte/sec
+	 * @return bool
+	 */
+	function speed_kb($val) {
+		$this -> speed = $val * 1024;
+	}
+	
+	
 
 	/** Config Varie, se devi confi qualcosa a mano fallo adesso...
 	 */
@@ -270,10 +288,18 @@ class stream {
 
 	/** Calcola il delay
 	 * Alias io leggo un buffer, e lo invio, quanto devo fermarmi prima di spedire il successivo ?
+	 * 
+	 * TODO Fai una cosa meglio, anche se credo che cosi sia ok, alias un flush del buffer ogni secondo...
 	 * @return microsecondi di attesa
 	 */
 	function delay_count() {
-		$this -> delay = $this -> bufsize / $this -> speed * 1000000;
+		
+		$this->bufsize = $this->speed;
+		
+		$this -> delay = 1000000;
+		
+		return $this -> delay;
+		//$this -> delay = $this -> bufsize / $this -> speed * 1000000;
 	}
 
 	/** Cerco un pò di info sul file e sull'utente...
@@ -620,8 +646,8 @@ class stream {
 	 */
 	var $bandwidth = 0;
 	/**
-	 * Speed limit
-	 * @var float
+	 * Speed limit, in byte al secondo
+	 * @var integer
 	 */
 	var $speed = 0;
 
@@ -635,12 +661,16 @@ class stream {
 		header('Last-Modified: ' . date('D, d M Y H:i:s \G\M\T', $this -> data_mod));
 		//die();
 		if ($this -> data_section && $this -> use_resume) {
+			exo("Content-Range: bytes $seek_start-$seek_end");
+			exo("Content-Length: " . ($seek_end - $seek_start + 1));
+			
 			header("HTTP/1.0 206 Partial Content");
 			header("Status: 206 Partial Content");
 			header('Accept-Ranges: bytes');
 			header("Content-Range: bytes $seek_start-$seek_end");
 			header("Content-Length: " . ($seek_end - $seek_start + 1));
 		} else {
+			exo("Content-Length: $size");
 			header("Content-Length: $size");
 		}
 	}
@@ -664,13 +694,29 @@ class stream {
 	/** Download convenzionale, senza limitazione di velocità
 	 * Start download
 	 * @return bool
+	 * 
+	 * TODO regola il buffer sia in base alla memoria libera che alla velocità dell'utente, in teoria DEVO ridurre al minimo gli accesi al disco
+	 * in numeri
+	 * Lettura_MAX = 80Mb/s -> 80Kb/ ms
+	 * 
+	 * Seek = 10 ms (perdo quasi un megabyte)
+	 * Leggo 5 mega -> 62 ms
+	 * 
+	 * Duty Cicle -> ~85% -> Lettura_stimata -> 68 mega -> 544 MegaBit
+	 * ----------
+	 * 
+	 * Se invece leggo 2 Mega a colpo -> 24 ms
+	 * 
+	 * Duty Cicle ~ 70% -> Lettura_stimata -> 56 mega -> 450 MegaBit
+	 * 
+	 * ----Ma con mille sessioni contemporanee mi servono 2Giga di buffer, invece che 5... 
 	 **/
 	function download() {
 
 		$this -> pre_download();
 
 		//printa($this);
-		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $this->job_size > 0) {
+		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $this -> job_size > 0) {
 			//Se ho un frammeto di dati piccolo lo invio e basta
 			if ($this -> job_size < $this -> bufsize) {
 				echo fread($this -> res, $this -> job_size);
@@ -694,9 +740,8 @@ class stream {
 			 */
 
 		}
-		die();
-		fclose($this->res);
-		
+		//die();
+		fclose($this -> res);
 		return $size;
 
 	}
@@ -760,7 +805,36 @@ class stream {
 	 */
 	function download_throttle() {
 		$this -> pre_download();
-		exo("inizio un download a velocità controllata");
+		exo("inizio un download a velocità controllata buffer da $this->bufsize flushato ogni $this->delay \n\n --------- ");
+
+		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $this -> job_size > 0) {
+			//Se ho un frammeto di dati piccolo lo invio e basta
+			
+			$this -> bufsize = $this->sqlmem_speed->select();
+			
+			if ($this -> job_size < $this -> bufsize) {
+				echo fread($this -> res, $this -> job_size);
+				$this -> bandwidth += $this -> job_size;
+				$this -> job_size = 0;
+
+			} else {//Altrimenti bufferizzo e invio
+				echo fread($this -> res, $this -> bufsize);
+				$this -> bandwidth += $this -> bufsize;
+				$this -> job_size -= $this -> bufsize;
+				usleep($this -> delay);
+			}
+
+			flush();
+			//A cosa serve non lo ho capito bene... per ora lo sopprimo sto pezzo
+			/*
+			 if ($speed > 0 && ($this -> bandwidth > $speed * $packet * 1024)) {
+			 //sleep(1);
+			 $packet++;
+			 }
+			 */
+
+		}
+
 	}
 
 	/**Un download in cui la velocità è limitata e il file da inviare non è completo
