@@ -53,6 +53,7 @@ if (!is_int($record_id) || !is_int($user_id) || $record_id > 10000000000 || $use
 exo("Imput ok, $record_id e $user_id");
 require_once 'util/mysqli.php';
 require_once 'class/stream.php';
+require_once 'class/sqlmem.php';
 
 //Inizializziamo il sistema yeah!
 
@@ -90,13 +91,26 @@ if ($stream -> complete) {
 	//$stream = new stream();
 	exo("inizio a leggere un file su disco ed ad inviarlo all'utente");
 
-
 	//registra che inizio un download, con questo ip, info ecc...
 	$log -> event();
 
 	$stream -> use_resume = true;
 	
-	$stream -> download();
+
+	$stream -> mem_speed_pos = 5001;
+	$stream -> mmc_init_speed();
+
+	$stream -> mem_flush_pos = 5002;
+	$stream -> mmc_init_flush();
+
+	$stream -> mem_buf_pos = 5003;
+	$stream -> mmc_init_buf();
+	
+	$val=$stream->sqlmem_speed->select();
+	$stream->speed=$val;
+	
+	$stream -> download_throttle();
+
 
 	//TODO Poi mettici mysql update un download in più,
 	//TODO se ti va metti anche  un download per l'utente, banda usata dall'utente e le stats che ti aggradano

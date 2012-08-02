@@ -10,16 +10,19 @@ require_once '../class/stream.php';
 require_once '../class/sqlmem.php';
 
 ob_start();
-$file="1.txt";
+
 
 $stream=new stream();
+$file="3";
 $stream->file_path=$file;
 $stream->file_dimension=filesize($file);
 $stream->mime="text/plain";
-$stream->file_name="Try";
-$stream->data_mod=time();
+$stream->file_name="Try.txt";
+$stream->data_mod=1343915765;
 
 $stream->throttle=2;
+$stream -> use_resume = true;
+
 $stream->mem_speed_pos=5001;
 $stream->mmc_init_speed();
 

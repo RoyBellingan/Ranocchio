@@ -823,12 +823,17 @@ class stream {
 	 */
 	function download_throttle() {
 		$this -> pre_download();
+		$this -> delay = $this -> sqlmem_flush -> select();
+		$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay / 1000000);
+		$this -> sqlmem_buf -> update($this -> bufsize);
 		exo("inizio un download a velocità controllata buffer da $this->bufsize flushato ogni $this->delay \n\n --------- ");
 
+//printa($this);
+//die();
 		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $this -> job_size > 0) {
 			//Se ho un frammeto di dati piccolo lo invio e basta
 			$this -> delay = $this -> sqlmem_flush -> select();
-			$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay/1000000);
+			$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay / 1000000);
 			$this -> sqlmem_buf -> update($this -> bufsize);
 
 			if ($this -> job_size < $this -> bufsize) {
