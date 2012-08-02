@@ -10,7 +10,7 @@ require_once '../class/stream.php';
 require_once '../class/sqlmem.php';
 
 ob_start();
-$file="2";
+$file="1.txt";
 
 $stream=new stream();
 $stream->file_path=$file;
@@ -22,7 +22,16 @@ $stream->data_mod=time();
 $stream->throttle=2;
 $stream->mem_speed_pos=5001;
 $stream->mmc_init_speed();
+
+$stream->mem_flush_pos=5002;
+$stream->mmc_init_flush();
+
+$stream->mem_buf_pos=5003;
+$stream->mmc_init_buf();
+
 $val=$stream->sqlmem_speed->select();
+
+
 exo ("il file lo spariamo a $val");
 
 $stream->speed=$val;

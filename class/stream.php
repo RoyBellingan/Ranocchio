@@ -164,7 +164,7 @@ class stream {
 		$this -> speed = 10 * 1024 * 1024;
 
 		//Il buffer è quanti dati leggo alla volta, quando leggo da disco 1Megabyte alla volta va benissimo...
-		$this -> bufsize =  1024 * 1024;
+		$this -> bufsize = 1024 * 1024;
 
 	}
 
@@ -173,18 +173,16 @@ class stream {
 	 * @return bool
 	 */
 	function speed_mb($val) {
-		$this -> speed = $val *  1024 * 1024;
+		$this -> speed = $val * 1024 * 1024;
 	}
-	
-		/**Regola la velocità di download
+
+	/**Regola la velocità di download
 	 * @param megabyte/sec
 	 * @return bool
 	 */
 	function speed_kb($val) {
 		$this -> speed = $val * 1024;
 	}
-	
-	
 
 	/** Config Varie, se devi confi qualcosa a mano fallo adesso...
 	 */
@@ -288,16 +286,16 @@ class stream {
 
 	/** Calcola il delay
 	 * Alias io leggo un buffer, e lo invio, quanto devo fermarmi prima di spedire il successivo ?
-	 * 
+	 *
 	 * TODO Fai una cosa meglio, anche se credo che cosi sia ok, alias un flush del buffer ogni secondo...
 	 * @return microsecondi di attesa
 	 */
 	function delay_count() {
-		
-		$this->bufsize = $this->speed;
-		
+
+		$this -> bufsize = $this -> speed;
+
 		$this -> delay = 1000000;
-		
+
 		return $this -> delay;
 		//$this -> delay = $this -> bufsize / $this -> speed * 1000000;
 	}
@@ -431,6 +429,26 @@ class stream {
 		//La locazione deve già esistere
 		//TODO test e controlli se non esiste
 		$this -> sqlmem_speed = new sqlmem($this -> mem_speed_pos, 16, true);
+
+	}
+
+	/**Inizia il throttle basata su shmop
+	 */
+	function mmc_init_flush() {
+
+		//La locazione deve già esistere
+		//TODO test e controlli se non esiste
+		$this -> sqlmem_flush = new sqlmem($this -> mem_flush_pos, 8, true);
+
+	}
+
+	/**Inizia il throttle basata su shmop
+	 */
+	function mmc_init_buf() {
+
+		//La locazione deve già esistere
+		//TODO test e controlli se non esiste
+		$this -> sqlmem_buf = new sqlmem($this -> mem_buf_pos, 10, true);
 
 	}
 
@@ -663,7 +681,7 @@ class stream {
 		if ($this -> data_section && $this -> use_resume) {
 			exo("Content-Range: bytes $seek_start-$seek_end");
 			exo("Content-Length: " . ($seek_end - $seek_start + 1));
-			
+
 			header("HTTP/1.0 206 Partial Content");
 			header("Status: 206 Partial Content");
 			header('Accept-Ranges: bytes');
@@ -694,22 +712,22 @@ class stream {
 	/** Download convenzionale, senza limitazione di velocità
 	 * Start download
 	 * @return bool
-	 * 
+	 *
 	 * TODO regola il buffer sia in base alla memoria libera che alla velocità dell'utente, in teoria DEVO ridurre al minimo gli accesi al disco
 	 * in numeri
 	 * Lettura_MAX = 80Mb/s -> 80Kb/ ms
-	 * 
+	 *
 	 * Seek = 10 ms (perdo quasi un megabyte)
 	 * Leggo 5 mega -> 62 ms
-	 * 
+	 *
 	 * Duty Cicle -> ~85% -> Lettura_stimata -> 68 mega -> 544 MegaBit
 	 * ----------
-	 * 
+	 *
 	 * Se invece leggo 2 Mega a colpo -> 24 ms
-	 * 
+	 *
 	 * Duty Cicle ~ 70% -> Lettura_stimata -> 56 mega -> 450 MegaBit
-	 * 
-	 * ----Ma con mille sessioni contemporanee mi servono 2Giga di buffer, invece che 5... 
+	 *
+	 * ----Ma con mille sessioni contemporanee mi servono 2Giga di buffer, invece che 5...
 	 **/
 	function download() {
 
@@ -809,9 +827,10 @@ class stream {
 
 		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $this -> job_size > 0) {
 			//Se ho un frammeto di dati piccolo lo invio e basta
-			
-			$this -> bufsize = $this->sqlmem_speed->select();
-			
+			$this -> delay = $this -> sqlmem_flush -> select();
+			$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay/1000000);
+			$this -> sqlmem_buf -> update($this -> bufsize);
+
 			if ($this -> job_size < $this -> bufsize) {
 				echo fread($this -> res, $this -> job_size);
 				$this -> bandwidth += $this -> job_size;
@@ -821,6 +840,7 @@ class stream {
 				echo fread($this -> res, $this -> bufsize);
 				$this -> bandwidth += $this -> bufsize;
 				$this -> job_size -= $this -> bufsize;
+				//echo "dormo per {$this->delay}";
 				usleep($this -> delay);
 			}
 

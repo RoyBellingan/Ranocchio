@@ -42,37 +42,68 @@ if ($speed == true) {
 	$sm -> update($speed);
 
 }
+
+$flush = false;
+if (isset($_GET['flush']) && $_GET['flush'] > 0) {
+
+	$flush = $_GET['flush'];
+	require_once '../class/sqlmem.php';
+	$fm = new sqlmem(5002, 10, true);
+
+	//echo "$speed bytes al secondo";
+	$flush = (int)$flush*1000;
+	$fm -> update($flush);
+	
+}
+
 if (@!isset($sm)) {
 	require_once '../class/sqlmem.php';
 	$sm = new sqlmem(5001, 16, true);
 }
+if (@!isset($fm)) {
+	require_once '../class/sqlmem.php';
+	$fm = new sqlmem(5002, 10, true);
+}
+
+	require_once '../class/sqlmem.php';
+	$bm = new sqlmem(5003, 10, true);
+
+$fms=$fm->select()/1000;
 $html = <<<EOD
 <!DOCTYPE html>
 <html>
 <body>
-<h2> È {$sm->select()} byte al secondo</h2>
+<h2> velocità {$sm->select()} byte al secondo</h2>
+<h2> Flush ogni $fms MILLisecondi</h2>
+<h2> Buffer di {$bm->select()} Byte </h2>
 <form action="download_limiter.php" method="get">
 <input type="submit" value="setta"> <br>
 <input type="checkbox" name="c"> Bit invece di byte ? <br>
 <input type="number" min="0" value="" name="speed"> MByte/s <br>
-<input type="number" min="0" value="" name="bspeed"> Byte/s
+<input type="number" min="0" value="" name="bspeed"> Byte/s<br>
 	
-
+<input type="number" min="0" value="" name="flush"> Tempo per il flush in MILLIsecondi (1/1'000'000) (da uno a 9'999'999 alias 9 secondi)
 
 <br><br>
-Tempo di download
 
-Parti in download
-
-Velocità massima
-
-Velocità minima
-
-Velocità media
 
 
 <hr>
-DA FARE!!! -> 
+DA FARE!!! ->
+Buffer Allocato<br>
+
+Tempo di download<br>
+
+Parti in download<br>
+
+Velocità massima<br>
+Singoli: - - - - - = totale
+Velocità minima<br>
+Singoli: - - - - - = totale
+Velocità media<br>
+Singoli: - - - - - = totale
+
+ 
 Per evitare troppe richieste e cose varie, viene RILETTA la velocità ogni 10 millisecondi circa sul downloader di prova
 (per quello in produzione invece è circa ogni 5 secondi)...
 
