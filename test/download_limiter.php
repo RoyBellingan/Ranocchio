@@ -17,7 +17,7 @@
  * Questo per pubblicare una mappa di latenze e velocità, se uno scarica lento gli dico di chi è la colpa...
  *
  */
-
+define("VERBOSE", false);
 $speed = false;
 if (isset($_GET['speed']) && $_GET['speed'] > 0) {
 
@@ -56,6 +56,24 @@ if (isset($_GET['flush']) && $_GET['flush'] > 0) {
 	
 }
 
+$head = false;
+if (isset($_GET['head']) && $_GET['head'] > 0) {
+
+	$head = $_GET['head'];
+	require_once '../class/sqlmem.php';
+	$hm = new sqlmem(5004, 16, true);
+
+	$hms=$hm->select();
+	//Non andare indietro!!!
+	
+	//if ($head > $hms){
+		$hm -> update($head);
+	//}
+	//echo "$speed bytes al secondo";
+	
+	
+}
+
 if (@!isset($sm)) {
 	require_once '../class/sqlmem.php';
 	$sm = new sqlmem(5001, 16, true);
@@ -65,15 +83,31 @@ if (@!isset($fm)) {
 	$fm = new sqlmem(5002, 10, true);
 }
 
+if (@!isset($hm)) {
+	require_once '../class/sqlmem.php';
+	$hm = new sqlmem(5004, 16, true);
+	$hms=$hm->select();
+}
+
+
 	require_once '../class/sqlmem.php';
 	$bm = new sqlmem(5003, 10, true);
 
+
+	require_once '../util/funkz.php';
+	$mmc = new memcache();
+	$mmc -> connect('localhost', 11211) or die("Could not connect");
+	$mem_info="limiter";
+	$file_status = $mmc -> get($mem_info);
+	printa($file_status);
+	
 $fms=$fm->select()/1000;
 $html = <<<EOD
 <!DOCTYPE html>
 <html>
 <body>
 <h2> velocità {$sm->select()} byte al secondo</h2>
+<h2> Header a {$hms} byte </h2>
 <h2> Flush ogni $fms MILLisecondi</h2>
 <h2> Buffer di {$bm->select()} Byte </h2>
 <form action="download_limiter.php" method="get">
@@ -81,7 +115,7 @@ $html = <<<EOD
 <input type="checkbox" name="c"> Bit invece di byte ? <br>
 <input type="number" min="0" value="" name="speed"> MByte/s <br>
 <input type="number" min="0" value="" name="bspeed"> Byte/s<br>
-	
+<input type="number" min="0" value="" name="head"> Head del file da NON superare<br>	
 <input type="number" min="0" value="" name="flush"> Tempo per il flush in MILLIsecondi (1/1'000'000) (da uno a 9'999'999 alias 9 secondi)
 
 <br><br>

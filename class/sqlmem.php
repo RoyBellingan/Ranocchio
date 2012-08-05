@@ -44,11 +44,16 @@ class sqlmem {
 		$this -> raw = $c;
 		$this -> no_d = $d;
 
-		if ($d) {
+		if ($d===true) {
 			//se la voglio nuova allora chiediglielo!
 			$this -> id = shmop_open($a, "n", 0777, $b);
 		} else {
-			$this -> id = shmop_open($a, "c", 0777, $b);
+			$this -> id = shmop_open($a, "w", 0, 0);
+			if ($this -> id === false) {
+				//Si vede che non esisteva
+				$this -> id = shmop_open($a, "n", 0777, $b);
+			}
+
 		}
 		if ($this -> id === false) {
 			die("controlla lo shmop per favore, era $a, $b, $c");

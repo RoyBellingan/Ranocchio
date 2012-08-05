@@ -4,10 +4,10 @@
 
 define("VERBOSE", true);
 
-
-require_once '../util/funkz.php';
-require_once '../class/stream.php';
-require_once '../class/sqlmem.php';
+define("PATH","../");
+require_once PATH.'util/funkz.php';
+require_once PATH.'class/stream.php';
+require_once PATH.'class/sqlmem.php';
 
 ob_start();
 
@@ -23,6 +23,10 @@ $stream->data_mod=1343915765;
 $stream->throttle=2;
 $stream -> use_resume = true;
 
+$stream->memcache_init();
+$stream -> mem_info="limiter";
+$stream->mmc_set_file_info();
+
 $stream->mem_speed_pos=5001;
 $stream->mmc_init_speed();
 
@@ -32,13 +36,16 @@ $stream->mmc_init_flush();
 $stream->mem_buf_pos=5003;
 $stream->mmc_init_buf();
 
+$stream->mem_head_pos=5004;
+$stream->mmc_init_head();
+
 $val=$stream->sqlmem_speed->select();
 
 
 exo ("il file lo spariamo a $val");
 
 $stream->speed=$val;
-$stream->download_throttle();
+$stream->download_adv();
 
 die();
 

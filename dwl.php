@@ -12,6 +12,7 @@
 //Soliti check sugli imput degli utenti...
 ob_start();
 define("VERBOSE", true);
+define("PATH","../");
 require_once 'util/funkz.php';
 require_once 'class/eventlog.php';
 

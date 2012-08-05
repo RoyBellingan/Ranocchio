@@ -2,7 +2,6 @@
 /*TODO
  *
 
- * Rendi operativo il limitare di velocità anche per i download lato utente
  * Fai il download con mmc_cap e testalo usando down them all e amici vari...
  *
  * Inizia ad usare i test, in teoria puoi benissimo forkare un processo che fa la prima richiesta, e forkare anche gli altri...
@@ -403,7 +402,7 @@ class stream {
 	function memcache_init() {
 
 		//I 3 puntatori del memcache che uso...
-		require_once 'class/sqlmem.php';
+		require_once PATH . 'class/sqlmem.php';
 
 		$this -> mem_info = $this -> file_id . "_info";
 		$this -> mem_status = $this -> file_id . "_status";
@@ -438,7 +437,7 @@ class stream {
 
 		//La locazione deve già esistere
 		//TODO test e controlli se non esiste
-		$this -> sqlmem_flush = new sqlmem($this -> mem_flush_pos, 8, true);
+		$this -> sqlmem_flush = new sqlmem($this -> mem_flush_pos, 10, true);
 
 	}
 
@@ -450,6 +449,22 @@ class stream {
 		//TODO test e controlli se non esiste
 		$this -> sqlmem_buf = new sqlmem($this -> mem_buf_pos, 10, true);
 
+	}
+
+	/**Inizia il throttle basata su shmop
+	 */
+	function mmc_init_head() {
+
+		//La locazione deve già esistere
+		//TODO test e controlli se non esiste
+		$this -> sqlmem_head = new sqlmem($this -> mem_head_pos, 16, true);
+
+	}
+
+	/** Chiama diretto $this -> sqlmem_head -> select();
+	 */
+	function mmc_get_head() {
+		$this -> sqlmem_head -> select();
 	}
 
 	/** Chiama diretto $this -> sqlmem_speed -> select();
@@ -468,7 +483,14 @@ class stream {
 	 *
 	 */
 	function mmc_set_file_info() {
-		$this -> mmc -> set($this -> mem_info, $this -> file_info);
+		$info[] = $this -> file_info;
+		$info['file_path'] = $this -> file_path;
+		$info['file_dimension'] = $this -> file_dimension;
+		$info['mime'] = $this -> mime;
+		$info['file_name'] = $this -> file_name;
+		$info['data_mod'] = $this -> data_mod;
+
+		$this -> mmc -> set($this -> mem_info, $info);
 	}
 
 	/**Legge dal memcached info sul file
@@ -609,7 +631,10 @@ class stream {
 				fwrite($lfp, $buf);
 				$pos += strlen($buf);
 				//Non chiamo la funzione che spreca tempoh!
-				$this -> mmc -> set($this -> mem_pos, $pos);
+				//durante lo sviluppo evitalo, che se cambia una cosa è più facile NON sconquassare tutto Questo lo puoi fare
+				//Ah davvero ? e i test a cosa servivano ? 
+				$this->sqlmem_head->update($pos);
+				//$this -> mmc -> set($this -> mem_pos, $pos);
 				$ite++;
 			}
 			exo("iterazioni $ite");
@@ -828,8 +853,8 @@ class stream {
 		$this -> sqlmem_buf -> update($this -> bufsize);
 		exo("inizio un download a velocità controllata buffer da $this->bufsize flushato ogni $this->delay \n\n --------- ");
 
-//printa($this);
-//die();
+		//printa($this);
+		//die();
 		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $this -> job_size > 0) {
 			//Se ho un frammeto di dati piccolo lo invio e basta
 			$this -> delay = $this -> sqlmem_flush -> select();
@@ -869,6 +894,75 @@ class stream {
 	 */
 
 	function download_adv() {
+		$this -> use_resume = false;
+		$this -> pre_download();
+		$this -> delay = $this -> sqlmem_flush -> select();
+		$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay / 1000000);
+		$this -> sqlmem_buf -> update($this -> bufsize);
+
+		$this -> head = $this -> sqlmem_head -> select();
+
+		exo("inizio un download a velocità controllata buffer da $this->bufsize flushato ogni $this->delay \n 
+		L'head del file si trova a $this->head \n --------- ");
+	
+		$loop=0;
+		//printa($this);
+		//die();
+		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $this -> job_size > 0) {
+			
+			$loop++;
+			//Se ho un frammeto di dati piccolo lo invio e basta
+			$this -> delay = $this -> sqlmem_flush -> select();
+			$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay / 1000000);
+			$this -> sqlmem_buf -> update($this -> bufsize);
+			$this -> head = $this -> sqlmem_head -> select();
+
+			//TODO NON accetto i download ranged per adesso
+
+			
+			//Il job size è quanto posso al momento inviare...
+			$this -> job_size = $this -> head - $this -> bandwidth;
+			
+			exo("Ciclo numero : $loop\n
+			Dati inviati	:	$this->bandwidth
+			Head del file a :	$this->head
+			Job size	:	$this->job_size
+			Buffer 		: 	$this->bufsize
+			\n
+			");
+			
+			//NON deve mai essere ZERO, se scende sotto una certa soglia (un buffer pieno + 1 byte per ora), entra un delay addizionale di un secondo...
+			//Ovvio se il file è finito è un altro paio di maniche...
+
+			if ($this -> job_size <= $this -> bufsize + 1) {
+				sleep(1);
+				//salta questo ciclo e gg..
+				continue;
+			}
+
+			if ($this -> job_size < $this -> bufsize) {
+				echo fread($this -> res, $this -> job_size);
+				$this -> bandwidth += $this -> job_size;
+				$this -> job_size = 0;
+
+			} else {//Altrimenti bufferizzo e invio
+				echo fread($this -> res, $this -> bufsize);
+				$this -> bandwidth += $this -> bufsize;
+				$this -> job_size -= $this -> bufsize;
+				//echo "dormo per {$this->delay}";
+				usleep($this -> delay);
+			}
+
+			flush();
+			//A cosa serve non lo ho capito bene... per ora lo sopprimo sto pezzo
+			/*
+			 if ($speed > 0 && ($this -> bandwidth > $speed * $packet * 1024)) {
+			 //sleep(1);
+			 $packet++;
+			 }
+			 */
+
+		}
 
 	}
 
