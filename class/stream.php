@@ -2,6 +2,9 @@
 /*TODO
  *
 
+ * Ricontrolla le locazioni condivise, fai un unica funzione, o massimo due in cui vengano settati questi indirizzi e inizializzati i vari handler
+ * 
+ * 
  * Fai il download con mmc_cap e testalo usando down them all e amici vari...
  *IMPLEMENTARE il nuovo sistema di errori, sia una funkz da chiamare al volo, sia una classe per inserire dettaglia bla bla bla
  * Inizia ad usare i test, in teoria puoi benissimo forkare un processo che fa la prima richiesta, e forkare anche gli altri...
@@ -419,6 +422,7 @@ class stream {
 		//1'000'000 + file_id*4 + 0
 		$this -> mem_pos = 1000000 + $this -> file_id * 4;
 		$this -> mem_pid = $this -> file_id . "_pid";
+		$this -> mem_head_pos = 1000000 + ($this -> file_id * 4) + 4;
 
 		exo("Mem usa $this->mem_info + $this->mem_status $this->mem_pos");
 		$this -> mmc = new memcache();
@@ -572,7 +576,7 @@ class stream {
 
 		$this -> space_free_min = 1073741824;
 		//un giga minimo
-
+		$this->mmc_init_head();
 		exo("serverotto start!");
 		//Carichiamo le info sugli hosting...
 		require_once 'hosting/hosting_id.php';
@@ -648,9 +652,10 @@ class stream {
 
 			$lfp = fopen($file_path, "w");
 			logg("stream aperto $file_path");
+			exo("l'head lo salvo a $this->mem_head_pos");
 			$pos = 0;
 			$ite = 0;
-			while ($buf = fread($rfp, 8)) {
+			while ($buf = fread($rfp, 8192)) {
 				//logg("letto $buf");
 				//echo $buf;
 				fwrite($lfp, $buf);
