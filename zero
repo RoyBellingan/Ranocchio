@@ -1,0 +1,14 @@
+Url utili:
+Configura la velocità di download per il rated
+http://192.168.1.7/mokba/test/download_limiter.php
+
+Inizia un download rated del file 1 nell cartella test, alias 56 mega di testo
+192.168.1.8/test/download_limited.php?file=1
+
+Cancella un file come cached
+http://192.168.1.8/test/eradicache.php?file=1
+
+Scarica il file elencato, in questo caso il file 1, se vuoi testare per bene devi prima cancellarlo dalla cache, e dal db...
+192.168.1.7/mokba/dwl.php?record_id=1&user_id=1
+
+Detona TUTTI gli shmop che trovi in giro associati a me...

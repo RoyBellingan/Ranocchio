@@ -12,7 +12,7 @@
 //Soliti check sugli imput degli utenti...
 ob_start();
 define("VERBOSE", true);
-define("PATH","../");
+define("PATH","");
 require_once 'util/funkz.php';
 require_once 'class/eventlog.php';
 
@@ -125,7 +125,7 @@ if ($stream -> complete) {
 		exo("È candidato ad essere salvato, vediamo se serverotto già sta scaricandolo o sono il primo");
 
 		$stream -> type = "disk";
-
+		//$stream -> shmop_pos_init();
 		$stream -> memcache_init();
 		$stream -> mmc_get_file_status();
 		exo("file status è $stream->file_status");
@@ -146,8 +146,9 @@ if ($stream -> complete) {
 			}
 
 		}
-
-		$stream -> start();
+//$stream->mem_flush_pos=5002;
+		$stream->mmc_init_flush();
+		$stream -> download_adv();
 
 	} else {
 		$stream = new stream();

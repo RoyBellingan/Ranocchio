@@ -45,14 +45,19 @@ class sqlmem {
 		$this -> no_d = $d;
 
 		if ($d===true) {
+			//TODO fix privilegi
+			//TODO fix utente sconosciuto con cui gira php-fpm
 			//se la voglio nuova allora chiediglielo!
 			$this -> id = shmop_open($a, "n", 0777, $b);
 		} else {
-			$this -> id = shmop_open($a, "w", 0, 0);
+			//Controllo prima se posso riciclare un segmento esistente
+			$this -> id = shmop_open($a, "c", 0777, $b);
+			/*
 			if ($this -> id === false) {
 				//Si vede che non esisteva
 				$this -> id = shmop_open($a, "n", 0777, $b);
 			}
+			*/
 
 		}
 		if ($this -> id === false) {

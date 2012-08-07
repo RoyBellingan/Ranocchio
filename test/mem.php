@@ -1,5 +1,6 @@
 <?php
-define("VERBOSE", true);
+define("VERBOSE", false);
+define("PATH","../");
 require_once '../class/stream.php';
 require_once '../util/funkz.php';
 
@@ -43,10 +44,3 @@ echo "file status";
 printa($stream -> file_status);
 echo "file pos";
 printa($stream -> file_pos);
-
-$status="000";
-echo "e invece ci scrivo che è $status";
-$stream->file_status=$status;
-$stream->mmc_set_file_status();
-
-

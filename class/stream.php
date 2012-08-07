@@ -3,7 +3,7 @@
  *
 
  * Fai il download con mmc_cap e testalo usando down them all e amici vari...
- *
+ *IMPLEMENTARE il nuovo sistema di errori, sia una funkz da chiamare al volo, sia una classe per inserire dettaglia bla bla bla
  * Inizia ad usare i test, in teoria puoi benissimo forkare un processo che fa la prima richiesta, e forkare anche gli altri...
  *
  *
@@ -357,8 +357,10 @@ class stream {
 					$this -> set_light(true);
 				} else {
 					//Pure questo non va bene che un file scaricato sia di dimensione diversa da quello che risulta salvato...
-					//avvia serverotto e mettici una pezzah
+					//TODO avvia serverotto e mettici una pezzah
+					//TODO controlla ogni tot gli md5, anzi gli sha1, ma dai abbiamo sha512 usiamolo! (20% più lento dello sha1 e 100% del md5)
 
+					
 					$this -> reason = "dimensione del file trovato nella cache diversa doveva essere {$this->file_info['dimension']} invece è $this->file_dimension";
 					exo($this -> reason);
 					$this -> set_light(false);
@@ -397,6 +399,13 @@ class stream {
 		}
 	}
 
+	/** Inizia LE posizioni dei vari shmop
+	 * NON ESISTE
+	 */
+	function shmop_pos_init() {
+
+	}
+
 	/** Controllo se è tutto ok per iniziare lo stream dal disco
 	 */
 	function memcache_init() {
@@ -428,6 +437,9 @@ class stream {
 		//La locazione deve già esistere
 		//TODO test e controlli se non esiste
 		$this -> sqlmem_speed = new sqlmem($this -> mem_speed_pos, 16, true);
+		if ($this -> sqlmem_speed -> select() == 0) {
+			$this -> sqlmem_speed -> update($this -> speed);
+		}
 
 	}
 
@@ -438,6 +450,10 @@ class stream {
 		//La locazione deve già esistere
 		//TODO test e controlli se non esiste
 		$this -> sqlmem_flush = new sqlmem($this -> mem_flush_pos, 10, true);
+
+		if ($this -> sqlmem_flush -> select() == 0) {
+			$this -> sqlmem_flush -> update(1000000);
+		}
 
 	}
 
@@ -458,6 +474,10 @@ class stream {
 		//La locazione deve già esistere
 		//TODO test e controlli se non esiste
 		$this -> sqlmem_head = new sqlmem($this -> mem_head_pos, 16, true);
+
+		if ($this -> sqlmem_head -> select() == 0) {
+			$this -> sqlmem_head -> update($this -> file_dimension);
+		}
 
 	}
 
@@ -616,7 +636,12 @@ class stream {
 			logg("inizio a salvare");
 			logg("apro $this->remote_address");
 			$rfp = fopen($this -> remote_address, "r");
-			logg("stream aperto $this->remote_address @");
+			if ($rfp===false){
+				//TODO se fallisce una cosa del genere loggalo per bene, come CRITICAL
+				exo("omg FAIL ad aprire $this->remote_address");
+				die("omg FAIL ad aprire $this->remote_address");
+			}
+			logg("stream aperto  $this->remote_address@");
 			printa($rfp);
 
 			$file_path = $this -> cache_path . $this -> file_id;
@@ -632,8 +657,8 @@ class stream {
 				$pos += strlen($buf);
 				//Non chiamo la funzione che spreca tempoh!
 				//durante lo sviluppo evitalo, che se cambia una cosa è più facile NON sconquassare tutto Questo lo puoi fare
-				//Ah davvero ? e i test a cosa servivano ? 
-				$this->sqlmem_head->update($pos);
+				//Ah davvero ? e i test a cosa servivano ?
+				$this -> sqlmem_head -> update($pos);
 				//$this -> mmc -> set($this -> mem_pos, $pos);
 				$ite++;
 			}
@@ -894,35 +919,47 @@ class stream {
 	 */
 
 	function download_adv() {
+		
+		
+		
 		$this -> use_resume = false;
 		$this -> pre_download();
 		$this -> delay = $this -> sqlmem_flush -> select();
+
 		$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay / 1000000);
+
+		//un cap al buffer di 10 mega
+		//TODO fallo dynamic in base all'effettiva ram libera del server
+		if ($this -> bufsize > 10000000) {
+			$this -> bufsize = 10000000;
+		}
 		$this -> sqlmem_buf -> update($this -> bufsize);
 
 		$this -> head = $this -> sqlmem_head -> select();
 
 		exo("inizio un download a velocità controllata buffer da $this->bufsize flushato ogni $this->delay \n 
 		L'head del file si trova a $this->head \n --------- ");
-	
-		$loop=0;
+
+		$loop = 0;
 		//printa($this);
 		//die();
 		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $this -> job_size > 0) {
-			
+
 			$loop++;
 			//Se ho un frammeto di dati piccolo lo invio e basta
 			$this -> delay = $this -> sqlmem_flush -> select();
 			$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay / 1000000);
+			if ($this -> bufsize > 10000000) {
+				$this -> bufsize = 10000000;
+			}
 			$this -> sqlmem_buf -> update($this -> bufsize);
 			$this -> head = $this -> sqlmem_head -> select();
 
 			//TODO NON accetto i download ranged per adesso
 
-			
 			//Il job size è quanto posso al momento inviare...
 			$this -> job_size = $this -> head - $this -> bandwidth;
-			
+/*
 			exo("Ciclo numero : $loop\n
 			Dati inviati	:	$this->bandwidth
 			Head del file a :	$this->head
@@ -930,7 +967,7 @@ class stream {
 			Buffer 		: 	$this->bufsize
 			\n
 			");
-			
+*/
 			//NON deve mai essere ZERO, se scende sotto una certa soglia (un buffer pieno + 1 byte per ora), entra un delay addizionale di un secondo...
 			//Ovvio se il file è finito è un altro paio di maniche...
 

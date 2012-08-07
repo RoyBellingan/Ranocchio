@@ -240,6 +240,34 @@ function qrow($sql,$asso=MYSQLI_BOTH,$db=false){
 	}
 }
 
+/**Fai una query di modifica (update o delete) e mi dice quante righe ha fatto
+ * @param query $sql
+* @param un db fra tanti... $db
+*/
+function qmod($sql,$asso=MYSQLI_BOTH,$db=false){
+
+
+	if ($db===false){
+		GLOBAL $db;
+	}
+
+	$res=$db->query($sql);
+
+	if ($db->error){
+		echo "<br>\n<br> $sql \n<br>".$db->error."\n<br>";
+		$err=true;
+
+		unset($db->error);
+
+		return false;
+	}else{
+		$val=$res->affected_rows;
+
+		return $val;
+
+	}
+}
+
 /**Chiude la connessione
  * utile per quando uso i forkkkk
  */

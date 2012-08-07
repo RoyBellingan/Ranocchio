@@ -13,11 +13,20 @@ ob_start();
 
 
 $stream=new stream();
-$file="3";
+
+if (isset($_GET['file'])){
+	$file=$_GET['file'];
+}else{
+	$file="3"; //un file da un mega che contiene solo la parola scaricami ripetuta alla nausea	
+}
+//$file="3";
+//echo "is".$file;
 $stream->file_path=$file;
 $stream->file_dimension=filesize($file);
 $stream->mime="text/plain";
-$stream->file_name="Try.txt";
+$stream->file_name="file_".$file;
+
+//La data deve essere fissa altrimenti contro prokka il refresh e quindi il resume fallisce
 $stream->data_mod=1343915765;
 
 $stream->throttle=2;
