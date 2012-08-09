@@ -9,6 +9,10 @@ require_once PATH.'util/funkz.php';
 require_once PATH.'class/stream.php';
 require_once PATH.'class/sqlmem.php';
 
+$pid=posix_getpid();
+exo("---------------------------------------");
+exo("ciao io sono $pid");
+
 ob_start();
 
 
@@ -19,12 +23,13 @@ if (isset($_GET['file'])){
 	$file=$_GET['file'];
 	$stream -> file_id = $file;
 }else{
-	$file="3"; //un file da un mega che contiene solo la parola scaricami ripetuta alla nausea
-	$stream -> file_id = 3;	
+	$file="1"; //un file da un mega che contiene solo la parola scaricami ripetuta alla nausea
+	$stream -> file_id = 1;	
 }
 //$file="3";
 //echo "is".$file;
-
+$file=1;
+$stream -> file_id = 2;	
 $stream->file_path=$file;
 $stream->file_dimension=filesize($file);
 $stream->mime="text/plain";

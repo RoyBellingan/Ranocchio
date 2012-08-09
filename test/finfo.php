@@ -1,6 +1,8 @@
 <?php
 //Tutte le info che conosco su un certo file:
 
+//Utile solo per debug MOOOOOLTO approfonditi
+
 //TODO info generiche
 
 //TODO processi che lo stanno scaricando

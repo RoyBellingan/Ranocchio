@@ -55,7 +55,7 @@ function exo($txt){
 function printa($txt){
 	//echo "<pre>";
 	if(VERBOSE==true){
-	logg(var_dump($txt));
+	logg(var_export($txt,true));
 	}else{
 		echo "<pre>";
 		print_r($txt);

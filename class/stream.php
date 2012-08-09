@@ -271,7 +271,7 @@ class stream {
 			$this -> seek_end = $this -> file_dimension - 1;
 		}
 
-		//Se invece la fine è prima dell'inizio, o è scemo chi lo chiede, o non è stato richeisto...!
+		//Se invece la fine è prima dell'inizio, o è scemo chi lo chiede, o non è stato richiesto...!
 		if ($this -> seek_end < $this -> seek_start) {
 			$this -> seek_end = $this -> file_dimension - 1;
 		}
@@ -315,6 +315,7 @@ class stream {
 		exo($sql);
 		$this -> res = qrow($sql);
 		printa($this -> res);
+
 		$this -> file_info = $this -> res;
 		$this -> file_id = $this -> res['file_id'];
 		$this -> file_path = $this -> cache_path . $this -> file_id;
@@ -369,13 +370,15 @@ class stream {
 
 					$this -> reason = "dimensione del file trovato nella cache diversa doveva essere {$this->file_info['dimension']} invece è $this->file_dimension";
 					exo($this -> reason);
+					$this -> file_dimension = $this -> file_info['dimension'];
 					$this -> set_light(false);
 					return false;
 				}
 			} else {
 				//Questo è un errore grave, non dovrebbe MAI accadere una cosa del genere
 				//avvia serverotto e procedi come fosse un file da scaricare...
-				$this -> reason = "iol file $this->file_path non trovato nella cache";
+				$this -> reason = "il file $this->file_path non trovato nella cache";
+				$this -> file_dimension = $this -> file_info['dimension'];
 				exo($this -> reason);
 				$this -> set_light(false);
 				return false;
@@ -383,6 +386,7 @@ class stream {
 
 		} else {
 			exo("file incompleto");
+			$this -> file_dimension = $this -> file_info['dimension'];
 			$this -> complete = false;
 		}
 
@@ -421,16 +425,17 @@ class stream {
 
 		$this -> mem_info = $this -> file_id . "_info";
 		$this -> mem_status = $this -> file_id . "_status";
+		$this -> mem_pid = $this -> file_id . "_pid";
+
+		exo("Mem usa $this->mem_info + $this->mem_status $this->mem_pos");
+		$this -> mmc = new memcache();
+		$this -> mmc -> connect('localhost', 11211) or die("Could not connect");
 
 		//1'000'000 + file_id*4 + 0
 		$this -> mem_head_pos = $this -> shmop_offset + ($this -> file_id * 4);
 		$this -> mem_speed_pos = $this -> shmop_offset + ($this -> file_id * 4) + 1;
 		$this -> mem_flush_pos = $this -> shmop_offset + ($this -> file_id * 4) + 2;
 		$this -> mem_buf_pos = $this -> shmop_offset + ($this -> file_id * 4) + 3;
-
-		exo("Mem usa $this->mem_info + $this->mem_status $this->mem_pos");
-		$this -> mmc = new memcache();
-		$this -> mmc -> connect('localhost', 11211) or die("Could not connect");
 
 		$this -> sqlmem_head = new sqlmem($this -> mem_head_pos, 16, true);
 		$this -> sqlmem_speed = new sqlmem($this -> mem_speed_pos, 16, true);
@@ -440,6 +445,51 @@ class stream {
 		//echo "scrivo 10 in $this->mem_status";
 		//$this -> mmc -> set($this -> mem_status, "00");
 
+	}
+
+	/**Controlla che i valori letti siano plausibili / rientrino nei range ammessi
+	 * TODO espandila nel file di config per i range ecc
+	 */
+	function shmop_check() {
+
+		if ($this -> sqlmem_speed -> select() < 1) {
+			$this -> sqlmem_speed -> update(1);
+		}
+
+		if ($this -> sqlmem_flush -> select() == 0 || $this -> sqlmem_flush -> select() === false || $this -> sqlmem_flush -> select() == '') {
+			$this -> sqlmem_flush -> update(1000000);
+			//Un secondo
+		}
+
+		if ($this -> sqlmem_head -> select() == 0) {
+			$this -> sqlmem_head -> update($this -> file_dimension);
+		}
+
+		$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay / 1000000);
+
+		//un cap al buffer di 10 mega
+		//TODO fallo dynamic in base all'effettiva ram libera del server
+		if ($this -> bufsize > 10000000) {
+			$this -> bufsize = 10000000;
+		}
+		$this -> sqlmem_buf -> update($this -> bufsize);
+
+		$this -> delay = $this -> sqlmem_flush -> select();
+
+		$this -> head = $this -> sqlmem_head -> select();
+
+	}
+
+	/** Rileggi gli shmop, dai ci vuole un attimo!
+	 */
+	function shmop_refresh() {
+		$this -> delay = $this -> sqlmem_flush -> select();
+		$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay / 1000000);
+		if ($this -> bufsize > 10000000) {
+			$this -> bufsize = 10000000;
+		}
+		$this -> sqlmem_buf -> update($this -> bufsize);
+		$this -> head = $this -> sqlmem_head -> select();
 	}
 
 	/**Inizia il throttle basata su shmop
@@ -546,7 +596,7 @@ class stream {
 	 */
 
 	function mmc_get_file_pos() {
-		$this -> sqlmem_pos -> select();
+		$this -> file_pos = $this -> sqlmem_head -> select();
 
 		if ($this -> file_pos === false) {
 			$this -> file_pos = "0";
@@ -591,7 +641,7 @@ class stream {
 		//Mi serve da sapere per adesso il percorso remoto
 		//printa($hosting_id);
 		$this -> remote_address = "http://" . $hosting_id[$this -> file_info['hosting_id']] . "/" . $this -> file_info['path'];
-		exo($this -> remote_address);
+		exo("indirizo remoto" . $this -> remote_address);
 
 		/*****/
 		//Chiudo le cose che verrebbero sharate
@@ -602,8 +652,8 @@ class stream {
 		//Memcache
 		$this -> mmc -> close();
 
-		//$pid = pcntl_fork();
-		$pid = 0;
+		$pid = pcntl_fork();
+		//$pid = 0;
 		//E le riapro
 		new_mysqli();
 		$this -> memcache_init();
@@ -616,14 +666,19 @@ class stream {
 		} else if ($pid) {
 			//Papà
 			$posixProcessID = posix_getpid();
-			exo("fork fatto! pid $pid, io sono $posixProcessID");
+			exo("fork fatto! pid $pid, io sono l PADRE $posixProcessID");
+			//Diamo un leggero vantaggio al download iniziale...
+
+			//sleep(2);
 
 			return true;
 
 		} else {
 			//Figghio
 			//ok cosa devo dare io esattamente ???
-
+			$posixProcessID = posix_getpid();
+			exo("fork fatto! pid $pid, io sono il FIGLIO a $posixProcessID");
+			
 			//1 Faccio sapere al mondo che esisto
 			$this -> posixProcessID = posix_getpid();
 			$this -> mmc_set_pid();
@@ -882,22 +937,28 @@ class stream {
 	/**Un download in cui la velocità viene limitata
 	 * Utile per gli utenti scarichissimi...
 	 *
-	 * Non è altro che un wrapper a download_adv ma con controllo posizione disattivo..
+	 * IL file deve essere completo
 	 */
 	function download_throttle() {
+		
+		if($this->file_info['complete']==false){
+			exo("file incompleto usa dwonload_adv");
+			die("file incompleto per questa funzione...");
+		}
+		$this->memcache_init();
 		$this -> pre_download();
-		$this -> delay = $this -> sqlmem_flush -> select();
-		$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay / 1000000);
-		$this -> sqlmem_buf -> update($this -> bufsize);
+
+		$this -> shmop_check();
+
+		$this -> shmop_refresh();
+
 		exo("inizio un download a velocità controllata buffer da $this->bufsize flushato ogni $this->delay \n\n --------- ");
 
 		//printa($this);
 		//die();
 		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $this -> job_size > 0) {
 			//Se ho un frammeto di dati piccolo lo invio e basta
-			$this -> delay = $this -> sqlmem_flush -> select();
-			$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay / 1000000);
-			$this -> sqlmem_buf -> update($this -> bufsize);
+			$this -> shmop_refresh();
 
 			if ($this -> job_size < $this -> bufsize) {
 				echo fread($this -> res, $this -> job_size);
@@ -932,40 +993,12 @@ class stream {
 	 */
 
 	function download_adv() {
-
+		//TODO NON accetto i download ranged per adesso
 		$this -> use_resume = false;
+
 		$this -> pre_download();
 
-		//TODO Velocità minima, delega una funzione con parametri
-		if ($this -> sqlmem_speed -> select() < 1) {
-			$this -> sqlmem_speed -> update(1);
-		}
-
-		
-		if ($this -> sqlmem_flush -> select() == 0 || $this -> sqlmem_flush -> select() === false || $this -> sqlmem_flush -> select() == '') {
-			$this -> sqlmem_flush -> update(1000000); //Un secondo
-		}
-
-
-		if ($this -> sqlmem_head -> select() == 0) {
-			$this -> sqlmem_head -> update($this -> file_dimension);
-		}
-		
-		
-
-		$this -> delay = $this -> sqlmem_flush -> select();
-
-		$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay / 1000000);
-
-		//un cap al buffer di 10 mega
-		//TODO fallo dynamic in base all'effettiva ram libera del server
-		if ($this -> bufsize > 10000000) {
-			$this -> bufsize = 10000000;
-		}
-
-		$this -> sqlmem_buf -> update($this -> bufsize);
-
-		$this -> head = $this -> sqlmem_head -> select();
+		$this -> shmop_check();
 
 		exo("inizio un download a velocità controllata buffer da $this->bufsize flushato ogni $this->delay \n 
 		L'head del file si trova a $this->head \n --------- ");
@@ -976,38 +1009,33 @@ class stream {
 		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $this -> job_size > 0) {
 
 			$loop++;
-			//Se ho un frammeto di dati piccolo lo invio e basta
-			$this -> delay = $this -> sqlmem_flush -> select();
-			$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay / 1000000);
-			if ($this -> bufsize > 10000000) {
-				$this -> bufsize = 10000000;
-			}
-			$this -> sqlmem_buf -> update($this -> bufsize);
-			$this -> head = $this -> sqlmem_head -> select();
 
-			//TODO NON accetto i download ranged per adesso
+			//Rileggo le shmop...
+			$this -> shmop_refresh();
 
 			//Il job size è quanto posso al momento inviare...
-			$this -> job_size = $this -> head - $this -> bandwidth;
-			/*
-			 exo("Ciclo numero : $loop\n
-			 Dati inviati	:	$this->bandwidth
-			 Head del file a :	$this->head
-			 Job size	:	$this->job_size
-			 Buffer 		: 	$this->bufsize
-			 \n
-			 ");
-			 */
 			//NON deve mai essere ZERO, se scende sotto una certa soglia (un buffer pieno + 1 byte per ora), entra un delay addizionale di un secondo...
 			//Ovvio se il file è finito è un altro paio di maniche...
-
-			if ($this -> job_size <= $this -> bufsize + 1) {
+			$this -> job_size = $this -> head - $this -> bandwidth;
+			$this -> remaining = $this -> file_dimension - $this -> bandwidth;
+/*
+			exo("Ciclo numero : $loop\n
+			 Dati inviati	:	$this->bandwidth
+			 Head del file a:	$this->head
+			 Job size	:	$this->job_size
+			 Buffer 	: 	$this->bufsize
+			 Remaining	:	$this->remaining
+			 \n
+			 ");
+*/
+			//Se ho un frammeto di dati piccolo lo invio e basta
+			if ($this -> job_size <= $this -> bufsize && $this -> job_size != $this -> remaining) {
 				sleep(1);
 				//salta questo ciclo e gg..
 				continue;
 			}
 
-			if ($this -> job_size < $this -> bufsize) {
+			if ($this -> job_size <= $this -> bufsize) {
 				echo fread($this -> res, $this -> job_size);
 				$this -> bandwidth += $this -> job_size;
 				$this -> job_size = 0;

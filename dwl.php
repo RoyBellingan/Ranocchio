@@ -15,6 +15,9 @@ define("VERBOSE", true);
 define("PATH","");
 require_once 'util/funkz.php';
 require_once 'class/eventlog.php';
+$pid=posix_getpid();
+exo("---------------------------------------");
+exo("ciao io sono $pid");
 
 $log = new eventlog();
 
@@ -75,6 +78,7 @@ exo("Controllo se il record esiste");
  * se il file è completo e quindi siamo a cavallo,
  * e sennò dal rateo delle richieste di download, se è fattibile salvarlo o continuo a fare da proxy nabbo
  */
+ 
 $stream -> file_info();
 
 if ($stream -> red_light) {
@@ -97,19 +101,6 @@ if ($stream -> complete) {
 	$log -> event();
 
 	$stream -> use_resume = true;
-	
-
-	$stream -> mem_speed_pos = 5001;
-	$stream -> mmc_init_speed();
-
-	$stream -> mem_flush_pos = 5002;
-	$stream -> mmc_init_flush();
-
-	$stream -> mem_buf_pos = 5003;
-	$stream -> mmc_init_buf();
-	
-	$val=$stream->sqlmem_speed->select();
-	$stream->speed=$val;
 	
 	$stream -> download_throttle();
 
@@ -148,7 +139,7 @@ if ($stream -> complete) {
 
 		}
 //$stream->mem_flush_pos=5002;
-		$stream->mmc_init_flush();
+		//$stream->mmc_init_flush();
 		$stream -> download_adv();
 
 	} else {

@@ -51,6 +51,7 @@ if (isset($_GET['file'])) {
 	exo("Imput ok, $stream->file_id");
 
 	$stream = new stream();
+	$stream -> stream_init();
 
 	//Passo l'id del record
 	//$stream -> record_id = $record_id;
@@ -69,7 +70,9 @@ if (isset($_GET['file'])) {
 	echo "file status";
 	printa($stream -> file_status);
 	echo "file pos";
-	printa($stream -> file_pos);
+	printa($stream -> sqlmem_head -> select());
+	
+	//printa($stream);
 
 	$status = "000";
 	echo "e invece ci scrivo che è $status";
