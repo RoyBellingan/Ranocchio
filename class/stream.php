@@ -959,8 +959,10 @@ class stream {
 		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $this -> job_size > 0) {
 			//Se ho un frammeto di dati piccolo lo invio e basta
 			$this -> shmop_refresh();
+			
+			$this -> remaining = $this -> file_dimension - $this -> bandwidth;
 
-			if ($this -> job_size < $this -> bufsize) {
+			if ($this -> job_size <= $this -> bufsize && $this -> job_size != $this -> remaining ) {
 				echo fread($this -> res, $this -> job_size);
 				$this -> bandwidth += $this -> job_size;
 				$this -> job_size = 0;
