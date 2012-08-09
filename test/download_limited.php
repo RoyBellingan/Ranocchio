@@ -13,14 +13,18 @@ ob_start();
 
 
 $stream=new stream();
+$stream->stream_init();
 
 if (isset($_GET['file'])){
 	$file=$_GET['file'];
+	$stream -> file_id = $file;
 }else{
-	$file="3"; //un file da un mega che contiene solo la parola scaricami ripetuta alla nausea	
+	$file="3"; //un file da un mega che contiene solo la parola scaricami ripetuta alla nausea
+	$stream -> file_id = 3;	
 }
 //$file="3";
 //echo "is".$file;
+
 $stream->file_path=$file;
 $stream->file_dimension=filesize($file);
 $stream->mime="text/plain";
@@ -36,20 +40,8 @@ $stream->memcache_init();
 $stream -> mem_info="limiter";
 $stream->mmc_set_file_info();
 
-$stream->mem_speed_pos=5001;
-$stream->mmc_init_speed();
-
-$stream->mem_flush_pos=5002;
-$stream->mmc_init_flush();
-
-$stream->mem_buf_pos=5003;
-$stream->mmc_init_buf();
-
-$stream->mem_head_pos=5004;
-$stream->mmc_init_head();
 
 $val=$stream->sqlmem_speed->select();
-
 
 exo ("il file lo spariamo a $val");
 

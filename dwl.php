@@ -59,6 +59,7 @@ require_once 'class/sqlmem.php';
 //Inizializziamo il sistema yeah!
 
 $stream = new stream();
+$stream->stream_init();
 
 //Passo l'id del record
 $stream -> record_id = $record_id;

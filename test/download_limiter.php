@@ -18,6 +18,19 @@
  *
  */
 define("VERBOSE", false);
+
+$file_id=1;
+$offset=1000000;
+
+
+		$mem_head_pos 	= $offset + ($file_id * 4);
+		$mem_speed_pos 	= $offset + ($file_id * 4) + 1;
+		$mem_flush_pos 	= $offset + ($file_id * 4) + 2;
+		$mem_buf_pos 	= $offset + ($file_id * 4) + 3;
+
+
+
+
 $speed = false;
 if (isset($_GET['speed']) && $_GET['speed'] > 0) {
 
@@ -35,7 +48,7 @@ if ($speed == true) {
 	}
 
 	require_once '../class/sqlmem.php';
-	$sm = new sqlmem(5001, 16, true);
+	$sm = new sqlmem($mem_speed_pos, 16, true);
 
 	//echo "$speed bytes al secondo";
 	$speed = (int)$speed;
@@ -48,7 +61,7 @@ if (isset($_GET['flush']) && $_GET['flush'] > 0) {
 
 	$flush = $_GET['flush'];
 	require_once '../class/sqlmem.php';
-	$fm = new sqlmem(5002, 10, true);
+	$fm = new sqlmem($mem_flush_pos, 16, true);
 
 	//echo "$speed bytes al secondo";
 	$flush = (int)$flush*1000;
@@ -61,7 +74,7 @@ if (isset($_GET['head']) && $_GET['head'] > 0) {
 
 	$head = $_GET['head'];
 	require_once '../class/sqlmem.php';
-	$hm = new sqlmem(5004, 16, true);
+	$hm = new sqlmem($mem_head_pos, 16, true);
 
 	$hms=$hm->select();
 	//Non andare indietro!!!
@@ -76,22 +89,22 @@ if (isset($_GET['head']) && $_GET['head'] > 0) {
 
 if (@!isset($sm)) {
 	require_once '../class/sqlmem.php';
-	$sm = new sqlmem(5001, 16, true);
+	$sm = new sqlmem($mem_speed_pos, 16, true);
 }
 if (@!isset($fm)) {
 	require_once '../class/sqlmem.php';
-	$fm = new sqlmem(5002, 10, true);
+	$fm = new sqlmem($mem_flush_pos, 16, true);
 }
 
 if (@!isset($hm)) {
 	require_once '../class/sqlmem.php';
-	$hm = new sqlmem(5004, 16, true);
+	$hm = new sqlmem($mem_head_pos, 16, true);
 	$hms=$hm->select();
 }
 
 
 	require_once '../class/sqlmem.php';
-	$bm = new sqlmem(5003, 10, true);
+	$bm = new sqlmem($mem_buf_pos, 16, true);
 
 
 	require_once '../util/funkz.php';

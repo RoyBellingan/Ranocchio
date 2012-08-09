@@ -2,9 +2,7 @@
 /*TODO
  *
 
- * Ricontrolla le locazioni condivise, fai un unica funzione, o massimo due in cui vengano settati questi indirizzi e inizializzati i vari handler
- * 
- * 
+ *
  * Fai il download con mmc_cap e testalo usando down them all e amici vari...
  *IMPLEMENTARE il nuovo sistema di errori, sia una funkz da chiamare al volo, sia una classe per inserire dettaglia bla bla bla
  * Inizia ad usare i test, in teoria puoi benissimo forkare un processo che fa la prima richiesta, e forkare anche gli altri...
@@ -14,7 +12,7 @@
  *
  *Cap sul numero di download in simultanea
  *
- *
+ *TODO evitiamo di usare le shmop se non servono anche ?, ok occupano un dx, ma è comunque una "cattiva pratica ^_^"
  *
  *
  *
@@ -133,11 +131,15 @@ class stream {
 
 	/** Info sul file
 	 *
-	 * Alias indirizzo remoto
-	 * hosting remoto
-	 * ecc da definire come cosa...
-	 * siccome ci accedo solo una volta è una stdclass per comodità invece che un array...
-	 *
+	 *Un array doppio, sia idati da mysql che quelli ... bo
+
+	 $info[] = $this -> file_info;
+	 $info['file_path'] = $this -> file_path;
+	 $info['file_dimension'] = $this -> file_dimension;
+	 $info['mime'] = $this -> mime;
+	 $info['file_name'] = $this -> file_name;
+	 $info['data_mod'] = $this -> data_mod;
+
 	 * Questo è su MEMCACHED
 	 */
 	var $mem_info;
@@ -155,7 +157,7 @@ class stream {
 	 */
 	var $space_free;
 
-	function stream() {
+	function stream_init() {
 		//Mettiamo qualche valore di default suvvia!
 
 		$this -> complete = true;
@@ -167,6 +169,8 @@ class stream {
 
 		//Il buffer è quanti dati leggo alla volta, quando leggo da disco 1Megabyte alla volta va benissimo...
 		$this -> bufsize = 1024 * 1024;
+
+		$this -> shmop_offset = 1000000;
 
 	}
 
@@ -363,7 +367,6 @@ class stream {
 					//TODO avvia serverotto e mettici una pezzah
 					//TODO controlla ogni tot gli md5, anzi gli sha1, ma dai abbiamo sha512 usiamolo! (20% più lento dello sha1 e 100% del md5)
 
-					
 					$this -> reason = "dimensione del file trovato nella cache diversa doveva essere {$this->file_info['dimension']} invece è $this->file_dimension";
 					exo($this -> reason);
 					$this -> set_light(false);
@@ -420,15 +423,20 @@ class stream {
 		$this -> mem_status = $this -> file_id . "_status";
 
 		//1'000'000 + file_id*4 + 0
-		$this -> mem_pos = 1000000 + $this -> file_id * 4;
-		$this -> mem_pid = $this -> file_id . "_pid";
-		$this -> mem_head_pos = 1000000 + ($this -> file_id * 4) + 4;
+		$this -> mem_head_pos = $this -> shmop_offset + ($this -> file_id * 4);
+		$this -> mem_speed_pos = $this -> shmop_offset + ($this -> file_id * 4) + 1;
+		$this -> mem_flush_pos = $this -> shmop_offset + ($this -> file_id * 4) + 2;
+		$this -> mem_buf_pos = $this -> shmop_offset + ($this -> file_id * 4) + 3;
 
 		exo("Mem usa $this->mem_info + $this->mem_status $this->mem_pos");
 		$this -> mmc = new memcache();
 		$this -> mmc -> connect('localhost', 11211) or die("Could not connect");
 
-		$this -> sqlmem_pos = new sqlmem($this -> mem_pos, 16, true);
+		$this -> sqlmem_head = new sqlmem($this -> mem_head_pos, 16, true);
+		$this -> sqlmem_speed = new sqlmem($this -> mem_speed_pos, 16, true);
+		$this -> sqlmem_flush = new sqlmem($this -> mem_flush_pos, 16, true);
+		$this -> sqlmem_buf = new sqlmem($this -> mem_buf_pos, 16, true);
+
 		//echo "scrivo 10 in $this->mem_status";
 		//$this -> mmc -> set($this -> mem_status, "00");
 
@@ -576,7 +584,7 @@ class stream {
 
 		$this -> space_free_min = 1073741824;
 		//un giga minimo
-		$this->mmc_init_head();
+		$this -> mmc_init_head();
 		exo("serverotto start!");
 		//Carichiamo le info sugli hosting...
 		require_once 'hosting/hosting_id.php';
@@ -640,7 +648,7 @@ class stream {
 			logg("inizio a salvare");
 			logg("apro $this->remote_address");
 			$rfp = fopen($this -> remote_address, "r");
-			if ($rfp===false){
+			if ($rfp === false) {
 				//TODO se fallisce una cosa del genere loggalo per bene, come CRITICAL
 				exo("omg FAIL ad aprire $this->remote_address");
 				die("omg FAIL ad aprire $this->remote_address");
@@ -924,11 +932,27 @@ class stream {
 	 */
 
 	function download_adv() {
-		
-		
-		
+
 		$this -> use_resume = false;
 		$this -> pre_download();
+
+		//TODO Velocità minima, delega una funzione con parametri
+		if ($this -> sqlmem_speed -> select() < 1) {
+			$this -> sqlmem_speed -> update(1);
+		}
+
+		
+		if ($this -> sqlmem_flush -> select() == 0 || $this -> sqlmem_flush -> select() === false || $this -> sqlmem_flush -> select() == '') {
+			$this -> sqlmem_flush -> update(1000000); //Un secondo
+		}
+
+
+		if ($this -> sqlmem_head -> select() == 0) {
+			$this -> sqlmem_head -> update($this -> file_dimension);
+		}
+		
+		
+
 		$this -> delay = $this -> sqlmem_flush -> select();
 
 		$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay / 1000000);
@@ -938,6 +962,7 @@ class stream {
 		if ($this -> bufsize > 10000000) {
 			$this -> bufsize = 10000000;
 		}
+
 		$this -> sqlmem_buf -> update($this -> bufsize);
 
 		$this -> head = $this -> sqlmem_head -> select();
@@ -964,15 +989,15 @@ class stream {
 
 			//Il job size è quanto posso al momento inviare...
 			$this -> job_size = $this -> head - $this -> bandwidth;
-/*
-			exo("Ciclo numero : $loop\n
-			Dati inviati	:	$this->bandwidth
-			Head del file a :	$this->head
-			Job size	:	$this->job_size
-			Buffer 		: 	$this->bufsize
-			\n
-			");
-*/
+			/*
+			 exo("Ciclo numero : $loop\n
+			 Dati inviati	:	$this->bandwidth
+			 Head del file a :	$this->head
+			 Job size	:	$this->job_size
+			 Buffer 		: 	$this->bufsize
+			 \n
+			 ");
+			 */
 			//NON deve mai essere ZERO, se scende sotto una certa soglia (un buffer pieno + 1 byte per ora), entra un delay addizionale di un secondo...
 			//Ovvio se il file è finito è un altro paio di maniche...
 
