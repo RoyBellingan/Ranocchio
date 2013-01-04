@@ -1,6 +1,7 @@
 <?php
 /*
  * Gestisce i record, ovvero i file prenotati per il download, ed per semplicità anche i file
+ * TODO ma serve sta cosa ?
  */
 class record {
 

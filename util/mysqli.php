@@ -67,6 +67,7 @@ function qi($sql,$db=false){
 
 	if ($db->error){
 		echo "\n<br> \n<br>".$db->error."\n<br>";
+		echo $sql;
 		$err=true;
 
 		unset($db->error);

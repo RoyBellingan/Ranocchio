@@ -71,8 +71,13 @@ class stream {
 	var $type;
 	//!<	La sorgente è il disco o la rete ?
 
+	/** La classe di logg
+	 */
+	var $logs;
+
+	/** Se il file è completo, se è da disco e questo è falso in auto cerca il memcached con il valore da non superare, disattiva le ranged request ecc
+	 */
 	var $complete;
-	//!<	Se il file è completo, se è da disco e questo è falso in auto cerca il memcached con il valore da non superare, disattiva le ranged request ecc
 
 	/** Se la velocità deve essere limitata, <b>Attenzione!!!</b>, se il file è letto dalla rete e non è pronto, il sistema comunque limita la velocità...
 	 * @param 0 unlimited
@@ -165,13 +170,37 @@ class stream {
 
 		//Velocità di base, da intendersi come MegaByte al secondo
 		//Configurata alla creazione della classe, e può essere tranquillamente cambiata
-		$this -> speed = 10 * 1024 * 1024;
+		$this -> speed = 1 * 1024 * 1024;
 
 		//Il buffer è quanti dati leggo alla volta, quando leggo da disco 1Megabyte alla volta va benissimo...
 		$this -> bufsize = 1024 * 1024;
 
 		$this -> shmop_offset = 1000000;
 
+	}
+
+	function input_ck() {
+		if (isset($_GET['record_id']) && isset($_GET['user_id'])) {
+
+			$this -> record_id = $_GET['record_id'];
+			$this -> user_id = $_GET['user_id'];
+		} else {
+
+			//Errata come richiesta
+			//TODO stampa a schermo l'errore per l'utente ecc
+			header("Status: 400 Bad Request");
+			$this -> logs -> logg_2();
+			exit();
+		}
+	}
+
+	function was_ist_numeric() {
+		$this -> record_id = (int)$this -> record_id;
+		$this -> user_id = (int)$this -> user_id;
+		if (!is_int($this -> record_id) || !is_int($this -> user_id) || $this -> record_id > 10000000000 || $this -> user_id > 1000000) {
+			$this -> logs -> logg_3();
+			die();
+		}
 	}
 
 	/**Regola la velocità di download
@@ -312,7 +341,8 @@ class stream {
 	function file_info() {
 
 		$sql = "select file.file_id, complete, dimension, UNIX_TIMESTAMP(creation) as creation_ts, dwl_number, dwl_last, user_id, hosting_id, path, banned, remote_name, mime from  record, file,remote where record.record_id = $this->record_id AND record.file_id = file.file_id AND file.file_id = remote.file_id";
-		exo($sql);
+		$this->logs->tlog("check",$sql);
+		
 		$this -> res = qrow($sql);
 		printa($this -> res);
 
@@ -335,20 +365,22 @@ class stream {
 			//TODO utente esiste / bannato / scaduto ?
 			//TODO l'utente ha superato il cap ?
 			//TODO registra ip richiesto
-			exo("trovato qualcosa, controllo utente");
+
+			$logs -> dlog("check", "trovato qualcosa, controllo utente");
 			if ($this -> res['user_id'] == $this -> user_id) {
-				exo("utente ok, via libera alla fase 1");
+				$this -> logs -> dlog("check", "utente ok, via libera alla fase 1");
 			} else {
 
-				exo("utente errato nel db -> {$this->res['user_id']} nella richiesta $this->user_id");
-				$this -> reason = "utente errato nel db -> {$this->res['user_id']} nella richiesta $this->user_id";
+				$this -> logs -> elog("request,user,not,found", "utente errato nel db -> {$this->res['user_id']} nella richiesta $this->user_id");
 				$this -> set_light(false);
 				return false;
 			}
 
 		} else {
 			$this -> set_light(false);
-			$this -> error = "file non trovato";
+			//TODO quale file ?
+			$this -> logs -> elog("request,file,not,found", "file non trovato");
+
 			return false;
 		}
 
@@ -472,6 +504,7 @@ class stream {
 		if ($this -> bufsize > 10000000) {
 			$this -> bufsize = 10000000;
 		}
+
 		$this -> sqlmem_buf -> update($this -> bufsize);
 
 		$this -> delay = $this -> sqlmem_flush -> select();
@@ -483,10 +516,16 @@ class stream {
 	/** Rileggi gli shmop, dai ci vuole un attimo!
 	 */
 	function shmop_refresh() {
+		//TODO NON　qui vanno configurati!
 		$this -> delay = $this -> sqlmem_flush -> select();
 		$this -> bufsize = ceil($this -> sqlmem_speed -> select() * $this -> delay / 1000000);
+		//TODO NON　qui vanno configurati!
 		if ($this -> bufsize > 10000000) {
 			$this -> bufsize = 10000000;
+		}
+		//TODO NON　qui vanno configurati!
+		if ($this -> bufsize < 5000) {
+			$this -> bufsize = 5000;
 		}
 		$this -> sqlmem_buf -> update($this -> bufsize);
 		$this -> head = $this -> sqlmem_head -> select();
@@ -678,7 +717,7 @@ class stream {
 			//ok cosa devo dare io esattamente ???
 			$posixProcessID = posix_getpid();
 			exo("fork fatto! pid $pid, io sono il FIGLIO a $posixProcessID");
-			
+
 			//1 Faccio sapere al mondo che esisto
 			$this -> posixProcessID = posix_getpid();
 			$this -> mmc_set_pid();
@@ -940,12 +979,12 @@ class stream {
 	 * IL file deve essere completo
 	 */
 	function download_throttle() {
-		
-		if($this->file_info['complete']==false){
+
+		if ($this -> file_info['complete'] == false) {
 			exo("file incompleto usa dwonload_adv");
 			die("file incompleto per questa funzione...");
 		}
-		$this->memcache_init();
+		$this -> memcache_init();
 		$this -> pre_download();
 
 		$this -> shmop_check();
@@ -959,10 +998,10 @@ class stream {
 		while (!($user_aborted = connection_aborted() || connection_status() == 1) && $this -> job_size > 0) {
 			//Se ho un frammeto di dati piccolo lo invio e basta
 			$this -> shmop_refresh();
-			
+
 			$this -> remaining = $this -> file_dimension - $this -> bandwidth;
 
-			if ($this -> job_size <= $this -> bufsize && $this -> job_size != $this -> remaining ) {
+			if ($this -> job_size <= $this -> bufsize && $this -> job_size != $this -> remaining) {
 				echo fread($this -> res, $this -> job_size);
 				$this -> bandwidth += $this -> job_size;
 				$this -> job_size = 0;
@@ -1020,8 +1059,8 @@ class stream {
 			//Ovvio se il file è finito è un altro paio di maniche...
 			$this -> job_size = $this -> head - $this -> bandwidth;
 			$this -> remaining = $this -> file_dimension - $this -> bandwidth;
-/*
-			exo("Ciclo numero : $loop\n
+			/*
+			 exo("Ciclo numero : $loop\n
 			 Dati inviati	:	$this->bandwidth
 			 Head del file a:	$this->head
 			 Job size	:	$this->job_size
@@ -1029,7 +1068,7 @@ class stream {
 			 Remaining	:	$this->remaining
 			 \n
 			 ");
-*/
+			 */
 			//Se ho un frammeto di dati piccolo lo invio e basta
 			if ($this -> job_size <= $this -> bufsize && $this -> job_size != $this -> remaining) {
 				sleep(1);

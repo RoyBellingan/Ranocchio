@@ -3,9 +3,9 @@
 
 /*
  * TODO impostare degli intoppi, dei rallentamenti artificiosi e cose simili...
- * Per ora imposto una velocità e quella mantengo...
  * TODO sarebbe bello potere vedere delle info dettagliate
  * Aggiornate ogni X secondi, ma che mi dicono ad esempio
+ * 
  * TODO Data inizio
  * Velocità Media
  * Velocità Max
@@ -14,7 +14,7 @@
  * Punti di passaggio (array di ip)
  * Ping ai vari hop (array di latenze)
  *
- * Questo per pubblicare una mappa di latenze e velocità, se uno scarica lento gli dico di chi è la colpa...
+ * Questo per pubblicare una mappa di latenze e velocità
  *
  */
 define("VERBOSE", false);
